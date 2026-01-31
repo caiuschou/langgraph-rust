@@ -1,4 +1,4 @@
-//! ReAct with ChatZhipu (智谱): think → act → observe → END.
+//! ReAct with ChatZhipu: think → act → observe → END.
 //!
 //! Design: [docs/rust-langgraph/15-llm-react-agent.md](https://github.com/.../15-llm-react-agent.md).
 //! Uses Zhipu GLM Chat Completions (ChatZhipu) instead of MockLlm; ToolSource::list_tools

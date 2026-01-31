@@ -1,7 +1,7 @@
 //! StateGraph example: linear chain with EchoAgent.
 //!
 //! Single-node chain START → echo → END. Same behavior as the echo example
-//! but via StateGraph. Run: `cargo run -p langgraph-examples --example state_graph_echo -- "你好"`
+//! but via StateGraph. Run: `cargo run -p langgraph-examples --example state_graph_echo -- "Hello"`
 
 use async_trait::async_trait;
 use langgraph::{Agent, AgentError, CompiledStateGraph, Message, StateGraph};
