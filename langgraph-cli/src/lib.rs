@@ -11,6 +11,8 @@
 //! }
 //! ```
 
+use std::sync::Arc;
+
 use async_openai::config::OpenAIConfig;
 use langgraph::{
     ActNode, ChatOpenAI, CompiledStateGraph, MockToolSource, ObserveNode, REACT_SYSTEM_PROMPT,
@@ -100,9 +102,9 @@ pub async fn run_with_config(config: &RunConfig, user_message: &str) -> Result<R
 
     let mut graph = StateGraph::<ReActState>::new();
     graph
-        .add_node("think", Box::new(think))
-        .add_node("act", Box::new(act))
-        .add_node("observe", Box::new(observe))
+        .add_node("think", Arc::new(think))
+        .add_node("act", Arc::new(act))
+        .add_node("observe", Arc::new(observe))
         .add_edge("think")
         .add_edge("act")
         .add_edge("observe");
