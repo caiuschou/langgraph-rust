@@ -1,0 +1,47 @@
+[package]
+name = "langgraph"
+version.workspace = true
+edition.workspace = true
+description = "LangGraph-style minimal agents in Rust: state-in, state-out"
+license.workspace = true
+authors.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+default = ["mcp", "sqlite"]
+mcp = ["dep:mcp_client", "dep:mcp_core"]
+# 智谱 GLM（async-openai 兼容 API）
+zhipu = ["dep:async-openai", "dep:dotenv"]
+# Persistent checkpoint/store via SQLite (16-memory-design §3.6, §5.2.2)
+sqlite = ["dep:rusqlite"]
+# Persistent store with vector search via LanceDB (16-memory-design §5.2.1, long-term-memory-store P4)
+lance = ["dep:lancedb", "dep:arrow-array", "dep:arrow-schema", "dep:futures"]
+
+[dependencies]
+tokio = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Optional: OpenAI-compatible API for LlmClient (enable with feature "zhipu"; used by ChatZhipu/ChatOpenAI).
+async-openai = { version = "0.32", optional = true, features = ["chat-completion"] }
+# Optional: load .env for examples (enable with feature "zhipu").
+dotenv = { workspace = true, optional = true }
+# Optional: MCP client for ToolSource (enable with feature "mcp").
+# MCP: https://github.com/caiuschou/mcp-rust
+mcp_client = { git = "https://github.com/caiuschou/mcp-rust", package = "mcp_client", optional = true }
+mcp_core = { git = "https://github.com/caiuschou/mcp-rust", package = "mcp_core", optional = true }
+# Optional: SQLite for persistent Checkpointer and Store (feature "sqlite").
+rusqlite = { version = "0.31", optional = true, features = ["bundled"] }
+# Optional: LanceDB for persistent Store with vector search (feature "lance").
+lancedb = { version = "0.23", optional = true }
+arrow-array = { version = "56.2", optional = true }
+arrow-schema = { version = "56.2", optional = true }
+futures = { version = "0.3", optional = true }
+
+[dev-dependencies]
+serde = { version = "1.0", features = ["derive"] }
+tempfile = "3"

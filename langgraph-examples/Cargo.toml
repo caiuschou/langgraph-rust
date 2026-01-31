@@ -1,0 +1,55 @@
+[package]
+name = "langgraph-examples"
+version.workspace = true
+edition.workspace = true
+description = "Examples for langgraph"
+license.workspace = true
+authors.workspace = true
+
+[[example]]
+name = "echo"
+path = "examples/echo.rs"
+
+[[example]]
+name = "state_graph_echo"
+path = "examples/state_graph_echo.rs"
+
+[[example]]
+name = "react_linear"
+path = "examples/react_linear.rs"
+
+[[example]]
+name = "memory_checkpoint"
+path = "examples/memory_checkpoint.rs"
+
+[[example]]
+name = "memory_persistence"
+path = "examples/memory_persistence.rs"
+
+[[example]]
+name = "react_zhipu"
+path = "examples/react_zhipu.rs"
+
+[[example]]
+name = "react_exa"
+path = "examples/react_exa.rs"
+
+[[example]]
+name = "react_mcp"
+path = "examples/react_mcp.rs"
+
+[[example]]
+name = "react_mcp_gitlab"
+path = "examples/react_mcp_gitlab.rs"
+
+[features]
+default = ["zhipu", "mcp"]
+zhipu = []
+mcp = []
+
+[dependencies]
+langgraph = { path = "../langgraph", features = ["zhipu"] }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+dotenv = { workspace = true }
+serde = { version = "1.0", features = ["derive"] }

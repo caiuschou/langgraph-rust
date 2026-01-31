@@ -1,0 +1,59 @@
+//! ReAct linear chain: think → act → observe → END.
+//!
+//! Design: [docs/rust-langgraph/13-react-agent-design.md](https://github.com/.../13-react-agent-design.md) §5, §8.4.
+//! Builds StateGraph<ReActState> with ThinkNode, ActNode, ObserveNode; one User message,
+//! invoke once; MockLLM returns one get_time tool call, MockToolSource returns fixed time.
+//!
+//! Run: `cargo run -p langgraph-examples --example react_linear -- "What time is it?"`
+
+use langgraph::{
+    ActNode, CompiledStateGraph, Message, MockLlm, MockToolSource, ObserveNode, ReActState,
+    REACT_SYSTEM_PROMPT, StateGraph, ThinkNode,
+};
+
+#[tokio::main]
+async fn main() {
+    let input = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "What time is it?".to_string());
+
+    let mut graph = StateGraph::<ReActState>::new();
+    graph
+        .add_node("think", Box::new(ThinkNode::new(Box::new(MockLlm::with_get_time_call()))))
+        .add_node("act", Box::new(ActNode::new(Box::new(MockToolSource::get_time_example()))))
+        .add_node("observe", Box::new(ObserveNode::new()))
+        .add_edge("think")
+        .add_edge("act")
+        .add_edge("observe");
+
+    let compiled: CompiledStateGraph<ReActState> = graph.compile().expect("valid graph");
+
+    let state = ReActState {
+        messages: vec![
+            Message::system(REACT_SYSTEM_PROMPT),
+            Message::user(input),
+        ],
+        tool_calls: vec![],
+        tool_results: vec![],
+    };
+
+    match compiled.invoke(state, None).await {
+        Ok(s) => {
+            for m in &s.messages {
+                match m {
+                    Message::System(x) => println!("[System] {}", x),
+                    Message::User(x) => println!("[User] {}", x),
+                    Message::Assistant(x) => println!("[Assistant] {}", x),
+                }
+            }
+            if s.messages.is_empty() {
+                eprintln!("no messages");
+                std::process::exit(1);
+            }
+        }
+        Err(e) => {
+            eprintln!("error: {}", e);
+            std::process::exit(1);
+        }
+    }
+}

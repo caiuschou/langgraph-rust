@@ -1,0 +1,19 @@
+[workspace]
+resolver = "2"
+members = [
+    "langgraph",
+    "langgraph-examples",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["langgraph-rust contributors"]
+license = "MIT"
+
+[workspace.dependencies]
+tokio = { version = "1.0", features = ["full"] }
+async-trait = "0.1"
+thiserror = "1.0"
+dotenv = "0.15"
+futures = "0.3"

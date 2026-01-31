@@ -1,0 +1,34 @@
+# Cargo
+/target
+**/*.rs.bk
+Cargo.lock
+
+# 环境与密钥
+.env
+.env.local
+*.local
+
+# 持久化数据（示例生成的 DB）
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+langgraph/data/
+
+# IDE / 编辑器
+.idea
+.vscode
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 调试与测试
+*.pdb
+**/mutants.out*/
+coverage/
+*.profraw
+*.profdata
