@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use langgraph::{
     ActNode, CompiledStateGraph, Message, MockLlm, MockToolSource, ObserveNode, ReActState,
-    REACT_SYSTEM_PROMPT, StateGraph, ThinkNode,
+    REACT_SYSTEM_PROMPT, StateGraph, ThinkNode, START, END,
 };
 
 #[tokio::main]
@@ -24,9 +24,10 @@ async fn main() {
         .add_node("think", Arc::new(ThinkNode::new(Box::new(MockLlm::with_get_time_call()))))
         .add_node("act", Arc::new(ActNode::new(Box::new(MockToolSource::get_time_example()))))
         .add_node("observe", Arc::new(ObserveNode::new()))
-        .add_edge("think")
-        .add_edge("act")
-        .add_edge("observe");
+        .add_edge(START, "think")
+        .add_edge("think", "act")
+        .add_edge("act", "observe")
+        .add_edge("observe", END);
 
     let compiled: CompiledStateGraph<ReActState> = graph.compile().expect("valid graph");
 

@@ -25,6 +25,7 @@ use std::sync::Arc;
 
 use langgraph::{
     ActNode, CompiledStateGraph, Message, MockLlm, ObserveNode, ReActState, StateGraph, ThinkNode,
+    START, END,
 };
 use langgraph::state::ToolCall;
 
@@ -78,9 +79,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .add_node("think", Arc::new(ThinkNode::new(Box::new(mock_llm))))
         .add_node("act", Arc::new(ActNode::new(Box::new(tool_source))))
         .add_node("observe", Arc::new(ObserveNode::new()))
-        .add_edge("think")
-        .add_edge("act")
-        .add_edge("observe");
+        .add_edge(START, "think")
+        .add_edge("think", "act")
+        .add_edge("act", "observe")
+        .add_edge("observe", END);
 
     let compiled: CompiledStateGraph<ReActState> = graph.compile()?;
 

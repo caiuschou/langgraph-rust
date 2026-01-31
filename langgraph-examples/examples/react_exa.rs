@@ -32,7 +32,7 @@ use std::sync::Arc;
 
 use langgraph::{
     ActNode, ChatZhipu, CompiledStateGraph, Message, McpToolSource, ObserveNode, ReActState,
-    REACT_SYSTEM_PROMPT, StateGraph, ThinkNode, ToolSource,
+    REACT_SYSTEM_PROMPT, StateGraph, ThinkNode, ToolSource, START, END,
 };
 
 #[cfg(not(feature = "zhipu"))]
@@ -82,9 +82,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .add_node("think", Arc::new(think))
         .add_node("act", Arc::new(act))
         .add_node("observe", Arc::new(observe))
-        .add_edge("think")
-        .add_edge("act")
-        .add_edge("observe");
+        .add_edge(START, "think")
+        .add_edge("think", "act")
+        .add_edge("act", "observe")
+        .add_edge("observe", END);
 
     let compiled: CompiledStateGraph<ReActState> = graph.compile()?;
     let state = ReActState {

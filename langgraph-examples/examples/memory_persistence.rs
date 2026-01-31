@@ -10,7 +10,7 @@
 use async_trait::async_trait;
 use langgraph::{
     Agent, AgentError, Checkpointer, JsonSerializer, Message, RunnableConfig, StateGraph,
-    SqliteSaver,
+    SqliteSaver, START, END,
 };
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -73,7 +73,8 @@ async fn main() {
     let mut graph = StateGraph::<AgentState>::new();
     graph
         .add_node("echo", Arc::new(EchoAgent))
-        .add_edge("echo");
+        .add_edge(START, "echo")
+        .add_edge("echo", END);
 
     let compiled = graph
         .compile_with_checkpointer(checkpointer.clone())
