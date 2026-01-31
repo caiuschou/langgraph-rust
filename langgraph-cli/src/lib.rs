@@ -15,9 +15,12 @@ use std::sync::Arc;
 
 use async_openai::config::OpenAIConfig;
 use langgraph::{
-    ActNode, ChatOpenAI, CompiledStateGraph, MockToolSource, ObserveNode, REACT_SYSTEM_PROMPT,
-    StateGraph, ThinkNode, ToolChoiceMode, ToolSource,
+    ActNode, ChatOpenAI, CompiledStateGraph, MockToolSource, NodeMiddleware, ObserveNode,
+    REACT_SYSTEM_PROMPT, StateGraph, ThinkNode, ToolChoiceMode, ToolSource,
 };
+
+mod logging_middleware;
+use logging_middleware::LoggingMiddleware;
 
 /// Public types for callers to handle `run` return value.
 pub use langgraph::{Message, ReActState};
@@ -109,7 +112,8 @@ pub async fn run_with_config(config: &RunConfig, user_message: &str) -> Result<R
         .add_edge("act")
         .add_edge("observe");
 
-    let compiled: CompiledStateGraph<ReActState> = graph.compile()?;
+    let middleware: Arc<dyn NodeMiddleware<ReActState>> = Arc::new(LoggingMiddleware);
+    let compiled: CompiledStateGraph<ReActState> = graph.compile_with_middleware(middleware)?;
 
     let state = ReActState {
         messages: vec![

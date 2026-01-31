@@ -20,6 +20,7 @@ default = ["openai"]
 openai = ["langgraph/zhipu", "dep:dotenv", "dep:async-openai"]
 
 [dependencies]
+async-trait = { workspace = true }
 langgraph = { path = "../langgraph", default-features = false, features = ["zhipu"] }
 tokio = { workspace = true }
 clap = { workspace = true }
