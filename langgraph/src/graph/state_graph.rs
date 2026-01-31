@@ -27,13 +27,16 @@ pub const END: &str = "__end__";
 /// to obtain an executable graph.
 ///
 /// **Interaction**: Accepts `Arc<dyn Node<S>>`; produces `CompiledStateGraph<S>`.
-/// Middleware is optional and passed at compile time only (not stored in StateGraph).
+/// Middleware can be set via `with_middleware` for fluent API or passed to `compile_with_middleware`.
+/// External crates can extend the chain via extension traits (methods that take `self` and return `Self`).
 pub struct StateGraph<S> {
     nodes: HashMap<String, Arc<dyn Node<S>>>,
     /// Edges (from_id, to_id). Compiled graph derives linear execution order from these.
     edges: Vec<(String, String)>,
     /// Optional long-term store; when set, compiled graph holds it for nodes (e.g. via config or node construction). See docs/rust-langgraph/16-memory-design.md §5.2.
     store: Option<Arc<dyn Store>>,
+    /// Optional node middleware; when set, `compile()` uses it (fluent API). See `with_middleware`.
+    middleware: Option<Arc<dyn NodeMiddleware<S>>>,
 }
 
 impl<S> Default for StateGraph<S>
@@ -55,6 +58,7 @@ where
             nodes: HashMap::new(),
             edges: Vec::new(),
             store: None,
+            middleware: None,
         }
     }
 
@@ -63,6 +67,15 @@ where
     pub fn with_store(self, store: Arc<dyn Store>) -> Self {
         Self {
             store: Some(store),
+            ..self
+        }
+    }
+
+    /// Attaches node middleware for fluent API. When set, `compile()` will use it.
+    /// Chain with `compile()`: `graph.with_middleware(m).compile()?`.
+    pub fn with_middleware(self, middleware: Arc<dyn NodeMiddleware<S>>) -> Self {
+        Self {
+            middleware: Some(middleware),
             ..self
         }
     }
@@ -92,11 +105,13 @@ where
 
     /// Builds the executable graph: validates that all edge node ids exist and
     /// edges form a single linear chain from START to END.
+    /// If middleware was set via `with_middleware`, it is used; otherwise no middleware.
     ///
     /// Returns `CompilationError` if any edge references an unknown node or
     /// the chain is invalid. On success, the graph is immutable and ready for `invoke`.
     pub fn compile(self) -> Result<CompiledStateGraph<S>, CompilationError> {
-        self.compile_internal(None, None)
+        let middleware = self.middleware.clone();
+        self.compile_internal(None, middleware)
     }
 
     /// Builds the executable graph with a checkpointer for persistence (thread_id in config).
