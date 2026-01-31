@@ -16,7 +16,7 @@ path = "src/main.rs"
 
 [features]
 default = ["openai"]
-# 使用真实 OpenAI（从 .env 读取 OPENAI_API_BASE、OPENAI_API_KEY、OPENAI_MODEL）
+# Use real OpenAI (reads OPENAI_API_BASE, OPENAI_API_KEY, OPENAI_MODEL from .env)
 openai = ["langgraph/zhipu", "dep:dotenv", "dep:async-openai"]
 
 [dependencies]

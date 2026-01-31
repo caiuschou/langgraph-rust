@@ -16,7 +16,9 @@ OPENAI_MODEL=gpt-4o-mini
 
 - `OPENAI_API_KEY`: required  
 - `OPENAI_API_BASE`: optional, default `https://api.openai.com/v1`  
-- `OPENAI_MODEL`: optional, default `gpt-4o-mini`
+- `OPENAI_MODEL`: optional, default `gpt-4o-mini`  
+- `OPENAI_TEMPERATURE`: optional, 0–2, lower = more deterministic (e.g. 0.2)  
+- `OPENAI_TOOL_CHOICE`: optional, `auto`|`none`|`required`
 
 ## Using as CLI
 
@@ -28,6 +30,12 @@ cargo run -p langgraph-cli -- "What time is it?"
 
 # Or -m / --message
 cargo run -p langgraph-cli -- -m "3+5 equals?"
+
+# Lower temperature for more deterministic tool use (e.g. fewer false tool calls)
+cargo run -p langgraph-cli -- -t 0.2 -m "3+5 equals?"
+
+# Force tool choice: --tool-choice auto|none|required
+cargo run -p langgraph-cli -- --tool-choice auto -m "What time is it?"
 ```
 
 After installing the binary:

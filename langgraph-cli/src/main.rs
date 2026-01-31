@@ -1,19 +1,27 @@
-//! ReAct Agent 二进制：解析命令行消息，调用库运行并打印结果。
+//! ReAct Agent binary: parses CLI message, invokes the library and prints the result.
 
 use clap::Parser;
-use langgraph_cli::{run, Message};
+use langgraph_cli::{run_with_config, Message, RunConfig};
 
 #[derive(Parser, Debug)]
 #[command(name = "langgraph")]
-#[command(about = "ReAct agent — 输入消息，运行 think → act → observe 链")]
+#[command(about = "ReAct agent — input a message, run think → act → observe chain")]
 struct Args {
-    /// 用户消息（也可直接作为第一个位置参数）
+    /// User message (or pass as first positional argument)
     #[arg(short, long, value_name = "TEXT")]
     message: Option<String>,
 
-    /// 位置参数：用户消息（当未使用 -m/--message 时）
+    /// Positional args: user message (when -m/--message is not used)
     #[arg(trailing_var_arg = true)]
     rest: Vec<String>,
+
+    /// Sampling temperature 0–2, lower is more deterministic (e.g. 0.2)
+    #[arg(short, long, value_name = "FLOAT")]
+    temperature: Option<f32>,
+
+    /// Tool choice: auto (default), none, required
+    #[arg(long, value_name = "MODE")]
+    tool_choice: Option<String>,
 }
 
 fn get_message(args: &Args) -> String {
@@ -28,13 +36,34 @@ fn get_message(args: &Args) -> String {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    dotenv::dotenv().ok();
     let args = Args::parse();
     let input = get_message(&args);
+
+    let mut config = match RunConfig::from_env() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("error: {}", e);
+            std::process::exit(1);
+        }
+    };
+    if let Some(t) = args.temperature {
+        config.temperature = Some(t);
+    }
+    if let Some(ref tc) = args.tool_choice {
+        config.tool_choice = Some(match tc.parse() {
+            Ok(m) => m,
+            Err(e) => {
+                eprintln!("error: {}", e);
+                std::process::exit(1);
+            }
+        });
+    }
 
     println!("User: {}", input);
     println!("---");
 
-    let state = match run(&input).await {
+    let state = match run_with_config(&config, &input).await {
         Ok(s) => s,
         Err(e) => {
             eprintln!("error: {}", e);
