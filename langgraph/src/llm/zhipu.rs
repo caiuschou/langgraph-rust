@@ -1,4 +1,4 @@
-//! Zhipu (智谱) GLM Chat Completions client implementing `LlmClient` (ChatZhipu).
+//! Zhipu GLM Chat Completions client implementing `LlmClient` (ChatZhipu).
 //!
 //! Uses Zhipu AI's OpenAI-compatible API. Requires `ZHIPU_API_KEY` (or
 //! explicit config). Optional tools can be set for function/tool calling;
@@ -29,7 +29,7 @@ use async_openai::{
 /// Zhipu API base URL (OpenAI-compatible).
 const ZHIPU_API_BASE: &str = "https://open.bigmodel.cn/api/paas/v4";
 
-/// Zhipu (智谱) GLM Chat Completions client implementing `LlmClient`.
+/// Zhipu GLM Chat Completions client implementing `LlmClient`.
 ///
 /// Uses `ZHIPU_API_KEY` from the environment by default; or provide
 /// config via `ChatZhipu::with_config`. Supports models such as

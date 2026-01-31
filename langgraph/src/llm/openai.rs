@@ -20,11 +20,13 @@ use async_openai::{
     types::chat::{
         ChatCompletionMessageToolCalls, ChatCompletionRequestMessage,
         ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage,
-        ChatCompletionTool, ChatCompletionTools, CreateChatCompletionRequestArgs,
-        FunctionObject,
+        ChatCompletionTool, ChatCompletionToolChoiceOption, ChatCompletionTools,
+        CreateChatCompletionRequestArgs, FunctionObject, ToolChoiceOptions,
     },
     Client,
 };
+
+use super::ToolChoiceMode;
 
 /// OpenAI Chat Completions client implementing `LlmClient` (aligns with LangChain ChatOpenAI).
 ///
@@ -37,6 +39,8 @@ pub struct ChatOpenAI {
     client: Client<OpenAIConfig>,
     model: String,
     tools: Option<Vec<ToolSpec>>,
+    temperature: Option<f32>,
+    tool_choice: Option<ToolChoiceMode>,
 }
 
 impl ChatOpenAI {
@@ -46,6 +50,8 @@ impl ChatOpenAI {
             client: Client::new(),
             model: model.into(),
             tools: None,
+            temperature: None,
+            tool_choice: None,
         }
     }
 
@@ -55,12 +61,26 @@ impl ChatOpenAI {
             client: Client::with_config(config),
             model: model.into(),
             tools: None,
+            temperature: None,
+            tool_choice: None,
         }
     }
 
     /// Set tools for this completion (enables tool_calls in response).
     pub fn with_tools(mut self, tools: Vec<ToolSpec>) -> Self {
         self.tools = Some(tools);
+        self
+    }
+
+    /// Set temperature (0–2). Lower values are more deterministic.
+    pub fn with_temperature(mut self, temperature: f32) -> Self {
+        self.temperature = Some(temperature);
+        self
+    }
+
+    /// Set tool choice mode (auto, none, required). Overrides API default when tools are present.
+    pub fn with_tool_choice(mut self, mode: ToolChoiceMode) -> Self {
+        self.tool_choice = Some(mode);
         self
     }
 
@@ -108,6 +128,19 @@ impl LlmClient for ChatOpenAI {
                 })
                 .collect();
             args.tools(chat_tools);
+        }
+
+        if let Some(t) = self.temperature {
+            args.temperature(t);
+        }
+
+        if let Some(mode) = self.tool_choice {
+            let opt = match mode {
+                ToolChoiceMode::Auto => ToolChoiceOptions::Auto,
+                ToolChoiceMode::None => ToolChoiceOptions::None,
+                ToolChoiceMode::Required => ToolChoiceOptions::Required,
+            };
+            args.tool_choice(ChatCompletionToolChoiceOption::Mode(opt));
         }
 
         let request = args.build().map_err(|e| {

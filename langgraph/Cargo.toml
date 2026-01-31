@@ -12,7 +12,7 @@ path = "src/lib.rs"
 [features]
 default = ["mcp", "sqlite"]
 mcp = ["dep:mcp_client", "dep:mcp_core"]
-# 智谱 GLM（async-openai 兼容 API）
+# Zhipu GLM (OpenAI-compatible API via async-openai)
 zhipu = ["dep:async-openai", "dep:dotenv"]
 # Persistent checkpoint/store via SQLite (16-memory-design §3.6, §5.2.2)
 sqlite = ["dep:rusqlite"]
