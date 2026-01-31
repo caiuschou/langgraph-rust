@@ -3,9 +3,11 @@
 //! Single-node chain START → echo → END. Same behavior as the echo example
 //! but via StateGraph. Run: `cargo run -p langgraph-examples --example state_graph_echo -- "Hello"`
 
+use std::env;
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use langgraph::{Agent, AgentError, CompiledStateGraph, Message, StateGraph};
-use std::env;
 
 /// Example state: message list only (same as echo example).
 #[derive(Debug, Clone, Default)]
@@ -52,7 +54,7 @@ async fn main() {
 
     let mut graph = StateGraph::<AgentState>::new();
     graph
-        .add_node("echo", Box::new(EchoAgent::new()))
+        .add_node("echo", Arc::new(EchoAgent::new()))
         .add_edge("echo");
 
     let compiled: CompiledStateGraph<AgentState> = graph.compile().expect("valid graph");

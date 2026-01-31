@@ -25,6 +25,8 @@
 //!
 //! Use `.env` in workspace root (gitignored) or export before running.
 
+use std::sync::Arc;
+
 use langgraph::{
     ActNode, CompiledStateGraph, Message, MockLlm, ObserveNode, ReActState, StateGraph, ThinkNode,
 };
@@ -77,9 +79,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut graph = StateGraph::<ReActState>::new();
     graph
-        .add_node("think", Box::new(ThinkNode::new(Box::new(mock_llm))))
-        .add_node("act", Box::new(ActNode::new(Box::new(tool_source))))
-        .add_node("observe", Box::new(ObserveNode::new()))
+        .add_node("think", Arc::new(ThinkNode::new(Box::new(mock_llm))))
+        .add_node("act", Arc::new(ActNode::new(Box::new(tool_source))))
+        .add_node("observe", Arc::new(ObserveNode::new()))
         .add_edge("think")
         .add_edge("act")
         .add_edge("observe");

@@ -72,7 +72,7 @@ async fn main() {
 
     let mut graph = StateGraph::<AgentState>::new();
     graph
-        .add_node("echo", Box::new(EchoAgent))
+        .add_node("echo", Arc::new(EchoAgent))
         .add_edge("echo");
 
     let compiled = graph

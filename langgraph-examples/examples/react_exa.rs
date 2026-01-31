@@ -28,6 +28,8 @@
 //! - `MCP_REMOTE_CMD`: Optional. Default `npx`. Use full path if npx is not in PATH.
 //! - `MCP_REMOTE_ARGS`: Optional. Default `-y mcp-remote $MCP_EXA_URL`.
 
+use std::sync::Arc;
+
 use langgraph::{
     ActNode, ChatZhipu, CompiledStateGraph, Message, McpToolSource, ObserveNode, ReActState,
     REACT_SYSTEM_PROMPT, StateGraph, ThinkNode, ToolSource,
@@ -77,9 +79,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut graph = StateGraph::<ReActState>::new();
     graph
-        .add_node("think", Box::new(think))
-        .add_node("act", Box::new(act))
-        .add_node("observe", Box::new(observe))
+        .add_node("think", Arc::new(think))
+        .add_node("act", Arc::new(act))
+        .add_node("observe", Arc::new(observe))
         .add_edge("think")
         .add_edge("act")
         .add_edge("observe");

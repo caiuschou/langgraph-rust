@@ -6,6 +6,8 @@
 //!
 //! Run: `cargo run -p langgraph-examples --example react_linear -- "What time is it?"`
 
+use std::sync::Arc;
+
 use langgraph::{
     ActNode, CompiledStateGraph, Message, MockLlm, MockToolSource, ObserveNode, ReActState,
     REACT_SYSTEM_PROMPT, StateGraph, ThinkNode,
@@ -19,9 +21,9 @@ async fn main() {
 
     let mut graph = StateGraph::<ReActState>::new();
     graph
-        .add_node("think", Box::new(ThinkNode::new(Box::new(MockLlm::with_get_time_call()))))
-        .add_node("act", Box::new(ActNode::new(Box::new(MockToolSource::get_time_example()))))
-        .add_node("observe", Box::new(ObserveNode::new()))
+        .add_node("think", Arc::new(ThinkNode::new(Box::new(MockLlm::with_get_time_call()))))
+        .add_node("act", Arc::new(ActNode::new(Box::new(MockToolSource::get_time_example()))))
+        .add_node("observe", Arc::new(ObserveNode::new()))
         .add_edge("think")
         .add_edge("act")
         .add_edge("observe");
