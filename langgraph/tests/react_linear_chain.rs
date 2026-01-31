@@ -3,6 +3,8 @@
 //! Design: [docs/rust-langgraph/13-react-agent-design.md](https://github.com/.../13-react-agent-design.md) §8.4 stage 4.4.
 //! From User input to tool_results written back into messages; no real LLM/MCP.
 
+use std::sync::Arc;
+
 use langgraph::{
     ActNode, CompiledStateGraph, Message, MockLlm, MockToolSource, ObserveNode, ReActState,
     StateGraph, ThinkNode,
@@ -12,9 +14,9 @@ use langgraph::{
 async fn react_linear_chain_user_to_tool_result_in_messages() {
     let mut graph = StateGraph::<ReActState>::new();
     graph
-        .add_node("think", Box::new(ThinkNode::new(Box::new(MockLlm::with_get_time_call()))))
-        .add_node("act", Box::new(ActNode::new(Box::new(MockToolSource::get_time_example()))))
-        .add_node("observe", Box::new(ObserveNode::new()))
+        .add_node("think", Arc::new(ThinkNode::new(Box::new(MockLlm::with_get_time_call()))))
+        .add_node("act", Arc::new(ActNode::new(Box::new(MockToolSource::get_time_example()))))
+        .add_node("observe", Arc::new(ObserveNode::new()))
         .add_edge("think")
         .add_edge("act")
         .add_edge("observe");
@@ -48,10 +50,10 @@ async fn react_multi_round_loop_then_end() {
     graph
         .add_node(
             "think",
-            Box::new(ThinkNode::new(Box::new(MockLlm::first_tools_then_end()))),
+            Arc::new(ThinkNode::new(Box::new(MockLlm::first_tools_then_end()))),
         )
-        .add_node("act", Box::new(ActNode::new(Box::new(MockToolSource::get_time_example()))))
-        .add_node("observe", Box::new(ObserveNode::with_loop()))
+        .add_node("act", Arc::new(ActNode::new(Box::new(MockToolSource::get_time_example()))))
+        .add_node("observe", Arc::new(ObserveNode::with_loop()))
         .add_edge("think")
         .add_edge("act")
         .add_edge("observe");
