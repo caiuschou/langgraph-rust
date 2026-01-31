@@ -1,5 +1,7 @@
 CLAUDE.md
 
+idea/
+
 # Cargo
 /target
 **/*.rs.bk

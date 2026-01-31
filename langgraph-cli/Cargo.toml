@@ -1,0 +1,27 @@
+[package]
+name = "langgraph-cli"
+version.workspace = true
+edition.workspace = true
+description = "CLI for ReAct agent powered by langgraph"
+license.workspace = true
+authors.workspace = true
+
+[lib]
+name = "langgraph_cli"
+path = "src/lib.rs"
+
+[[bin]]
+name = "langgraph"
+path = "src/main.rs"
+
+[features]
+default = ["openai"]
+# 使用真实 OpenAI（从 .env 读取 OPENAI_API_BASE、OPENAI_API_KEY、OPENAI_MODEL）
+openai = ["langgraph/zhipu", "dep:dotenv", "dep:async-openai"]
+
+[dependencies]
+langgraph = { path = "../langgraph", default-features = false, features = ["zhipu"] }
+tokio = { workspace = true }
+clap = { workspace = true }
+dotenv = { version = "0.15", optional = true }
+async-openai = { version = "0.32", optional = true, features = ["chat-completion"] }
