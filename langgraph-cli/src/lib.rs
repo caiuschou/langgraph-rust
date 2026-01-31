@@ -4,7 +4,7 @@
 //!
 //! ## Usage
 //!
-//! ```rust,no_run
+//! ```rust,no_run,ignore
 //! let state = langgraph_cli::run("user message").await?;
 //! for m in &state.messages {
 //!     // handle System / User / Assistant messages
@@ -15,12 +15,25 @@ use std::sync::Arc;
 
 use async_openai::config::OpenAIConfig;
 use langgraph::{
-    ActNode, ChatOpenAI, CompiledStateGraph, MockToolSource, NodeMiddleware, ObserveNode,
-    REACT_SYSTEM_PROMPT, StateGraph, ThinkNode, ToolChoiceMode, ToolSource, START, END,
+    ActNode, ChatOpenAI, CompiledStateGraph, MockToolSource, ObserveNode, REACT_SYSTEM_PROMPT,
+    StateGraph, ThinkNode, ToolChoiceMode, ToolSource, START, END,
 };
 
 mod logging_middleware;
 use logging_middleware::LoggingMiddleware;
+
+/// Extension trait for fluent API: attach node logging middleware then compile.
+/// Example of extending the build chain from outside langgraph; see idea/NODE_MIDDLEWARE_OPTIONS.md.
+pub trait WithNodeLogging {
+    /// Returns the same graph with `LoggingMiddleware` attached. Chain with `.compile()?`.
+    fn with_node_logging(self) -> Self;
+}
+
+impl WithNodeLogging for StateGraph<ReActState> {
+    fn with_node_logging(self) -> Self {
+        self.with_middleware(Arc::new(LoggingMiddleware))
+    }
+}
 
 /// Public types for callers to handle `run` return value.
 pub use langgraph::{Message, ReActState};
@@ -113,8 +126,7 @@ pub async fn run_with_config(config: &RunConfig, user_message: &str) -> Result<R
         .add_edge("act", "observe")
         .add_edge("observe", END);
 
-    let middleware: Arc<dyn NodeMiddleware<ReActState>> = Arc::new(LoggingMiddleware);
-    let compiled: CompiledStateGraph<ReActState> = graph.compile_with_middleware(middleware)?;
+    let compiled: CompiledStateGraph<ReActState> = graph.with_node_logging().compile()?;
 
     let state = ReActState {
         messages: vec![
