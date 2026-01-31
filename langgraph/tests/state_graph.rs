@@ -1,10 +1,11 @@
-//! Integration tests for StateGraph: compile validation, invoke, and with_store (P5.2).
+//! Integration tests for StateGraph: compile validation, invoke, with_store (P5.2), and compile_with_middleware.
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use langgraph::{
-    Agent, AgentError, CompilationError, InMemoryStore, Message, StateGraph, Store,
+    Agent, AgentError, CompilationError, InMemoryStore, Message, NodeMiddleware, Next, StateGraph,
+    Store,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -38,7 +39,7 @@ impl Agent for EchoAgent {
 #[tokio::test]
 async fn compile_fails_when_edge_refers_to_unknown_node() {
     let mut graph = StateGraph::<AgentState>::new();
-    graph.add_node("echo", Box::new(EchoAgent::new()));
+    graph.add_node("echo", Arc::new(EchoAgent::new()));
     graph.add_edge("echo");
     graph.add_edge("missing");
 
@@ -52,7 +53,7 @@ async fn compile_fails_when_edge_refers_to_unknown_node() {
 async fn invoke_single_node_chain() {
     let mut graph = StateGraph::<AgentState>::new();
     graph
-        .add_node("echo", Box::new(EchoAgent::new()))
+        .add_node("echo", Arc::new(EchoAgent::new()))
         .add_edge("echo");
 
     let compiled = graph.compile().unwrap();
@@ -69,7 +70,7 @@ async fn invoke_single_node_chain() {
 async fn compile_without_store_has_no_store() {
     let mut graph = StateGraph::<AgentState>::new();
     graph
-        .add_node("echo", Box::new(EchoAgent::new()))
+        .add_node("echo", Arc::new(EchoAgent::new()))
         .add_edge("echo");
 
     let compiled = graph.compile().unwrap();
@@ -82,7 +83,7 @@ async fn compile_with_store_holds_store() {
     let store: Arc<dyn Store> = Arc::new(InMemoryStore::new());
     let mut graph = StateGraph::<AgentState>::new();
     graph
-        .add_node("echo", Box::new(EchoAgent::new()))
+        .add_node("echo", Arc::new(EchoAgent::new()))
         .add_edge("echo");
 
     let compiled = graph.with_store(store).compile().unwrap();
@@ -96,4 +97,55 @@ async fn compile_with_store_holds_store() {
         .unwrap();
     let v = graph_store.get(&ns, "k1").await.unwrap();
     assert_eq!(v.as_ref().and_then(|x| x.as_str()), Some("v1"));
+}
+
+/// Logging middleware: records node ids as they run.
+struct LoggingMiddleware {
+    entered: std::sync::Mutex<Vec<String>>,
+}
+
+impl LoggingMiddleware {
+    fn new() -> Self {
+        Self {
+            entered: std::sync::Mutex::new(Vec::new()),
+        }
+    }
+}
+
+#[async_trait]
+impl NodeMiddleware<AgentState> for LoggingMiddleware {
+    async fn around_run(
+        &self,
+        node_id: &str,
+        state: AgentState,
+        inner: Box<
+            dyn FnOnce(AgentState)
+                -> std::pin::Pin<
+                    Box<dyn std::future::Future<Output = Result<(AgentState, Next), AgentError>> + Send>,
+                > + Send,
+        >,
+    ) -> Result<(AgentState, Next), AgentError> {
+        self.entered.lock().unwrap().push(node_id.to_string());
+        inner(state).await
+    }
+}
+
+/// Compiled graph with `compile_with_middleware` wraps each node.run; invoke still produces correct output.
+#[tokio::test]
+async fn compile_with_middleware_wraps_node_run() {
+    let middleware = Arc::new(LoggingMiddleware::new());
+    let mut graph = StateGraph::<AgentState>::new();
+    graph
+        .add_node("echo", Arc::new(EchoAgent::new()))
+        .add_edge("echo");
+
+    let compiled = graph.compile_with_middleware(middleware.clone()).unwrap();
+    let mut state = AgentState::default();
+    state.messages.push(Message::User("hello".into()));
+
+    let out = compiled.invoke(state, None).await.unwrap();
+    assert!(matches!(out.messages.last(), Some(Message::Assistant(s)) if s == "hello"));
+
+    let entered = middleware.entered.lock().unwrap();
+    assert_eq!(entered.as_slice(), &["echo"]);
 }

@@ -10,16 +10,18 @@ use std::sync::Arc;
 use crate::graph::compile_error::CompilationError;
 use crate::graph::compiled::CompiledStateGraph;
 use crate::graph::node::Node;
+use crate::graph::node_middleware::NodeMiddleware;
 use crate::memory::{Checkpointer, Store};
 
 /// State graph: nodes plus linear edge order. No conditional edges in minimal version.
 ///
 /// Generic over state type `S`. Build with `add_node` / `add_edge`, then
-/// `compile()` to obtain an executable graph.
+/// `compile()` or `compile_with_middleware()` to obtain an executable graph.
 ///
-/// **Interaction**: Accepts `Box<dyn Node<S>>`; produces `CompiledStateGraph<S>`.
+/// **Interaction**: Accepts `Arc<dyn Node<S>>`; produces `CompiledStateGraph<S>`.
+/// Middleware is optional and passed at compile time only (not stored in StateGraph).
 pub struct StateGraph<S> {
-    nodes: HashMap<String, Box<dyn Node<S>>>,
+    nodes: HashMap<String, Arc<dyn Node<S>>>,
     /// Linear chain: [id1, id2, ...] => START -> id1 -> id2 -> ... -> END
     edge_order: Vec<String>,
     /// Optional long-term store; when set, compiled graph holds it for nodes (e.g. via config or node construction). See docs/rust-langgraph/16-memory-design.md §5.2.
@@ -60,8 +62,8 @@ where
     /// Adds a node; id must be unique. Replaces if same id.
     ///
     /// Returns `&mut Self` for method chaining. The node is stored as
-    /// `Box<dyn Node<S>>`; use `add_edge` to include it in the chain.
-    pub fn add_node(&mut self, id: impl Into<String>, node: Box<dyn Node<S>>) -> &mut Self {
+    /// `Arc<dyn Node<S>>`; use `add_edge` to include it in the chain.
+    pub fn add_node(&mut self, id: impl Into<String>, node: Arc<dyn Node<S>>) -> &mut Self {
         self.nodes.insert(id.into(), node);
         self
     }
@@ -81,7 +83,7 @@ where
     /// Returns `CompilationError::NodeNotFound(id)` if any id in the edge order
     /// is not in the node map. On success, the graph is immutable and ready for `invoke`.
     pub fn compile(self) -> Result<CompiledStateGraph<S>, CompilationError> {
-        self.compile_with_checkpointer_opt(None)
+        self.compile_internal(None, None)
     }
 
     /// Builds the executable graph with a checkpointer for persistence (thread_id in config).
@@ -92,12 +94,30 @@ where
         self,
         checkpointer: Arc<dyn Checkpointer<S>>,
     ) -> Result<CompiledStateGraph<S>, CompilationError> {
-        self.compile_with_checkpointer_opt(Some(checkpointer))
+        self.compile_internal(Some(checkpointer), None)
     }
 
-    fn compile_with_checkpointer_opt(
+    /// Builds the executable graph with node middleware. The middleware wraps each node.run in invoke.
+    pub fn compile_with_middleware(
+        self,
+        middleware: Arc<dyn NodeMiddleware<S>>,
+    ) -> Result<CompiledStateGraph<S>, CompilationError> {
+        self.compile_internal(None, Some(middleware))
+    }
+
+    /// Builds the executable graph with both checkpointer and node middleware.
+    pub fn compile_with_checkpointer_and_middleware(
+        self,
+        checkpointer: Arc<dyn Checkpointer<S>>,
+        middleware: Arc<dyn NodeMiddleware<S>>,
+    ) -> Result<CompiledStateGraph<S>, CompilationError> {
+        self.compile_internal(Some(checkpointer), Some(middleware))
+    }
+
+    fn compile_internal(
         self,
         checkpointer: Option<Arc<dyn Checkpointer<S>>>,
+        middleware: Option<Arc<dyn NodeMiddleware<S>>>,
     ) -> Result<CompiledStateGraph<S>, CompilationError> {
         for id in &self.edge_order {
             if !self.nodes.contains_key(id) {
@@ -109,6 +129,7 @@ where
             edge_order: self.edge_order,
             checkpointer,
             store: self.store,
+            middleware,
         })
     }
 }

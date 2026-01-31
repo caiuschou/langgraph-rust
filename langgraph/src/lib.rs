@@ -79,7 +79,7 @@ pub mod tool_source;
 pub mod traits;
 
 pub use error::AgentError;
-pub use graph::{CompilationError, CompiledStateGraph, Next, Node, StateGraph};
+pub use graph::{CompilationError, CompiledStateGraph, Next, Node, NodeMiddleware, StateGraph};
 pub use llm::{LlmClient, LlmResponse, MockLlm, ToolChoiceMode};
 #[cfg(feature = "zhipu")]
 pub use llm::{ChatOpenAI, ChatZhipu};
