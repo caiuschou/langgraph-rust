@@ -38,7 +38,7 @@ pub trait Agent: Send + Sync {
 
 /// Any agent whose state type is `S` can be used as a graph node.
 ///
-/// Allows `StateGraph::add_node("id", Box::new(some_agent))` when the graph
+/// Allows `StateGraph::add_node("id", Arc::new(some_agent))` when the graph
 /// state type matches the agent's state. Interacts with `StateGraph`, `Node`, and `Agent`.
 #[async_trait]
 impl<S, A> Node<S> for A
