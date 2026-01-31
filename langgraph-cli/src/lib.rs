@@ -16,7 +16,7 @@ use std::sync::Arc;
 use async_openai::config::OpenAIConfig;
 use langgraph::{
     ActNode, ChatOpenAI, CompiledStateGraph, MockToolSource, NodeMiddleware, ObserveNode,
-    REACT_SYSTEM_PROMPT, StateGraph, ThinkNode, ToolChoiceMode, ToolSource,
+    REACT_SYSTEM_PROMPT, StateGraph, ThinkNode, ToolChoiceMode, ToolSource, START, END,
 };
 
 mod logging_middleware;
@@ -108,9 +108,10 @@ pub async fn run_with_config(config: &RunConfig, user_message: &str) -> Result<R
         .add_node("think", Arc::new(think))
         .add_node("act", Arc::new(act))
         .add_node("observe", Arc::new(observe))
-        .add_edge("think")
-        .add_edge("act")
-        .add_edge("observe");
+        .add_edge(START, "think")
+        .add_edge("think", "act")
+        .add_edge("act", "observe")
+        .add_edge("observe", END);
 
     let middleware: Arc<dyn NodeMiddleware<ReActState>> = Arc::new(LoggingMiddleware);
     let compiled: CompiledStateGraph<ReActState> = graph.compile_with_middleware(middleware)?;
