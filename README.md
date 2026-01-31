@@ -112,9 +112,9 @@ async fn main() {
     // Build the graph: think → act → observe → END
     let mut graph = StateGraph::<ReActState>::new();
     graph
-        .add_node("think", Box::new(think))
-        .add_node("act", Box::new(act))
-        .add_node("observe", Box::new(observe))
+        .add_node("think", Arc::new(think))
+        .add_node("act", Arc::new(act))
+        .add_node("observe", Arc::new(observe))
         .add_edge("think")      // think → act
         .add_edge("act")        // act → observe
         .add_edge("observe");   // observe → END
@@ -172,9 +172,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Build and compile graph
     let mut graph = StateGraph::<ReActState>::new();
     graph
-        .add_node("think", Box::new(think))
-        .add_node("act", Box::new(act))
-        .add_node("observe", Box::new(observe))
+        .add_node("think", Arc::new(think))
+        .add_node("act", Arc::new(act))
+        .add_node("observe", Arc::new(observe))
         .add_edge("think")
         .add_edge("act")
         .add_edge("observe");
