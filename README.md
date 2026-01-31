@@ -97,9 +97,10 @@ User Query → Think → Act → Observe → Think → ...
 Here's a complete example using a mock LLM and tool source:
 
 ```rust
+use std::sync::Arc;
 use langgraph::{
     ActNode, CompiledStateGraph, Message, MockLlm, MockToolSource,
-    ObserveNode, ReActState, REACT_SYSTEM_PROMPT, StateGraph, ThinkNode,
+    ObserveNode, ReActState, REACT_SYSTEM_PROMPT, StateGraph, ThinkNode, START, END,
 };
 
 #[tokio::main]
@@ -109,15 +110,16 @@ async fn main() {
     let act = ActNode::new(Box::new(MockToolSource::get_time_example()));
     let observe = ObserveNode::new();
 
-    // Build the graph: think → act → observe → END
+    // Build the graph: START → think → act → observe → END
     let mut graph = StateGraph::<ReActState>::new();
     graph
         .add_node("think", Arc::new(think))
         .add_node("act", Arc::new(act))
         .add_node("observe", Arc::new(observe))
-        .add_edge("think")      // think → act
-        .add_edge("act")        // act → observe
-        .add_edge("observe");   // observe → END
+        .add_edge(START, "think")
+        .add_edge("think", "act")
+        .add_edge("act", "observe")
+        .add_edge("observe", END);
 
     let compiled = graph.compile().expect("valid graph");
 
@@ -150,9 +152,10 @@ async fn main() {
 For production use, replace the mock components with real implementations:
 
 ```rust
+use std::sync::Arc;
 use langgraph::{
     ActNode, ChatZhipu, CompiledStateGraph, Message, MockToolSource,
-    ObserveNode, ReActState, REACT_SYSTEM_PROMPT, StateGraph, ThinkNode, ToolSource,
+    ObserveNode, ReActState, REACT_SYSTEM_PROMPT, StateGraph, ThinkNode, ToolSource, START, END,
 };
 
 #[tokio::main]
@@ -169,15 +172,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let act = ActNode::new(Box::new(tool_source));
     let observe = ObserveNode::new();
 
-    // Build and compile graph
+    // Build and compile graph: START → think → act → observe → END
     let mut graph = StateGraph::<ReActState>::new();
     graph
         .add_node("think", Arc::new(think))
         .add_node("act", Arc::new(act))
         .add_node("observe", Arc::new(observe))
-        .add_edge("think")
-        .add_edge("act")
-        .add_edge("observe");
+        .add_edge(START, "think")
+        .add_edge("think", "act")
+        .add_edge("act", "observe")
+        .add_edge("observe", END);
 
     let compiled = graph.compile()?;
 
