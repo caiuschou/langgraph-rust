@@ -5,7 +5,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use langgraph::{
     Agent, AgentError, CompilationError, InMemoryStore, Message, NodeMiddleware, Next, StateGraph,
-    Store,
+    START, END, Store,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -40,8 +40,8 @@ impl Agent for EchoAgent {
 async fn compile_fails_when_edge_refers_to_unknown_node() {
     let mut graph = StateGraph::<AgentState>::new();
     graph.add_node("echo", Arc::new(EchoAgent::new()));
-    graph.add_edge("echo");
-    graph.add_edge("missing");
+    graph.add_edge(START, "echo");
+    graph.add_edge("echo", "missing");
 
     match graph.compile() {
         Err(CompilationError::NodeNotFound(id)) => assert_eq!(id, "missing"),
@@ -54,7 +54,8 @@ async fn invoke_single_node_chain() {
     let mut graph = StateGraph::<AgentState>::new();
     graph
         .add_node("echo", Arc::new(EchoAgent::new()))
-        .add_edge("echo");
+        .add_edge(START, "echo")
+        .add_edge("echo", END);
 
     let compiled = graph.compile().unwrap();
     let mut state = AgentState::default();
@@ -71,7 +72,8 @@ async fn compile_without_store_has_no_store() {
     let mut graph = StateGraph::<AgentState>::new();
     graph
         .add_node("echo", Arc::new(EchoAgent::new()))
-        .add_edge("echo");
+        .add_edge(START, "echo")
+        .add_edge("echo", END);
 
     let compiled = graph.compile().unwrap();
     assert!(compiled.store().is_none());
@@ -84,7 +86,8 @@ async fn compile_with_store_holds_store() {
     let mut graph = StateGraph::<AgentState>::new();
     graph
         .add_node("echo", Arc::new(EchoAgent::new()))
-        .add_edge("echo");
+        .add_edge(START, "echo")
+        .add_edge("echo", END);
 
     let compiled = graph.with_store(store).compile().unwrap();
     assert!(compiled.store().is_some());
@@ -137,7 +140,8 @@ async fn compile_with_middleware_wraps_node_run() {
     let mut graph = StateGraph::<AgentState>::new();
     graph
         .add_node("echo", Arc::new(EchoAgent::new()))
-        .add_edge("echo");
+        .add_edge(START, "echo")
+        .add_edge("echo", END);
 
     let compiled = graph.compile_with_middleware(middleware.clone()).unwrap();
     let mut state = AgentState::default();

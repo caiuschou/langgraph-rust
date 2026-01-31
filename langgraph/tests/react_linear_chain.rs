@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use langgraph::{
     ActNode, CompiledStateGraph, Message, MockLlm, MockToolSource, ObserveNode, ReActState,
-    StateGraph, ThinkNode,
+    StateGraph, ThinkNode, START, END,
 };
 
 #[tokio::test]
@@ -17,9 +17,10 @@ async fn react_linear_chain_user_to_tool_result_in_messages() {
         .add_node("think", Arc::new(ThinkNode::new(Box::new(MockLlm::with_get_time_call()))))
         .add_node("act", Arc::new(ActNode::new(Box::new(MockToolSource::get_time_example()))))
         .add_node("observe", Arc::new(ObserveNode::new()))
-        .add_edge("think")
-        .add_edge("act")
-        .add_edge("observe");
+        .add_edge(START, "think")
+        .add_edge("think", "act")
+        .add_edge("act", "observe")
+        .add_edge("observe", END);
 
     let compiled: CompiledStateGraph<ReActState> = graph.compile().expect("valid graph");
 
@@ -54,9 +55,10 @@ async fn react_multi_round_loop_then_end() {
         )
         .add_node("act", Arc::new(ActNode::new(Box::new(MockToolSource::get_time_example()))))
         .add_node("observe", Arc::new(ObserveNode::with_loop()))
-        .add_edge("think")
-        .add_edge("act")
-        .add_edge("observe");
+        .add_edge(START, "think")
+        .add_edge("think", "act")
+        .add_edge("act", "observe")
+        .add_edge("observe", END);
 
     let compiled: CompiledStateGraph<ReActState> = graph.compile().expect("valid graph");
 
