@@ -30,7 +30,7 @@ impl MockToolSource {
         Self {
             tools: vec![ToolSpec {
                 name: "get_time".to_string(),
-                description: Some("Get current time.".to_string()),
+                description: Some("Get current time. Use ONLY when the user explicitly asks for current date, time, or 'what time is it'. Do NOT use for math, general knowledge, or other questions.".to_string()),
                 input_schema: json!({ "type": "object", "properties": {} }),
             }],
             call_result: "2025-01-29 12:00:00".to_string(),

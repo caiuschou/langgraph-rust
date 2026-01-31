@@ -13,7 +13,7 @@ async fn mock_tool_source_list_tools_returns_get_time_example() {
     let tools = source.list_tools().await.unwrap();
     assert_eq!(tools.len(), 1);
     assert_eq!(tools[0].name, "get_time");
-    assert_eq!(tools[0].description.as_deref(), Some("Get current time."));
+    assert!(tools[0].description.as_deref().unwrap_or("").contains("Get current time"));
 }
 
 #[tokio::test]
