@@ -1,6 +1,7 @@
 //! Compiled state graph: immutable, supports invoke only.
 //!
-//! Built by `StateGraph::compile` or `compile_with_checkpointer`. Holds nodes, edge order, optional checkpointer.
+//! Built by `StateGraph::compile` or `compile_with_checkpointer`. Holds nodes and
+//! edge order (derived from explicit edges at compile time), optional checkpointer.
 //! When checkpointer is set and config.thread_id is provided, final state is saved after invoke. See docs/rust-langgraph/16-memory-design.md §4.1.
 
 use std::collections::HashMap;

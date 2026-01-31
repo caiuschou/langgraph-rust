@@ -5,6 +5,7 @@
 
 mod compile_error;
 mod compiled;
+mod name_node;
 mod next;
 mod node;
 mod node_middleware;
@@ -12,7 +13,8 @@ mod state_graph;
 
 pub use compile_error::CompilationError;
 pub use compiled::CompiledStateGraph;
+pub use name_node::NameNode;
 pub use next::Next;
 pub use node::Node;
 pub use node_middleware::NodeMiddleware;
-pub use state_graph::StateGraph;
+pub use state_graph::{StateGraph, START, END};
