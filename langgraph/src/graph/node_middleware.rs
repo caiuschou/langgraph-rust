@@ -1,6 +1,7 @@
 //! Node middleware: wrap node.run with external async logic (around pattern).
 //!
-//! Pass via `StateGraph::compile_with_middleware` or `compile_with_checkpointer_and_middleware`. See docs/idea/NODE_MIDDLEWARE.md.
+//! Set via `StateGraph::with_middleware` for fluent API, or pass to
+//! `compile_with_middleware` / `compile_with_checkpointer_and_middleware`. See docs/idea/NODE_MIDDLEWARE.md.
 
 use async_trait::async_trait;
 use std::pin::Pin;
