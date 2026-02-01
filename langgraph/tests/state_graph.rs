@@ -10,6 +10,9 @@
 #[path = "state_graph/common.rs"]
 mod common;
 
+#[path = "state_graph/agent_as_node.rs"]
+mod agent_as_node;
+
 #[path = "state_graph/compile_fail.rs"]
 mod compile_fail;
 
