@@ -25,7 +25,10 @@ fn make_tool_source() -> MemoryToolSource {
 async fn list_tools_returns_three_memory_tools() {
     let source = make_tool_source();
 
-    let tools = source.list_tools().await.expect("list_tools should succeed");
+    let tools = source
+        .list_tools()
+        .await
+        .expect("list_tools should succeed");
 
     let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
     assert_eq!(tools.len(), 3);
@@ -88,7 +91,9 @@ async fn call_tool_retrieve_memory_empty_returns_no_memories_message() {
         .await
         .expect("retrieve_memory should not error");
 
-    assert!(content.text.contains("No memories found") || content.text.to_lowercase().contains("no"));
+    assert!(
+        content.text.contains("No memories found") || content.text.to_lowercase().contains("no")
+    );
 }
 
 /// **Scenario**: After saving, retrieve_memory (via search) can return the saved info.
