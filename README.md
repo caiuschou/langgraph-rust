@@ -334,8 +334,11 @@ The `langgraph-examples` crate contains various examples:
 | `react_linear` | Linear ReAct loop with reasoning |
 | `react_mcp` | ReAct agent with MCP tools |
 | `react_exa` | ReAct agent with web search |
+| `react_mcp_gitlab` | ReAct agent with GitLab MCP tools |
+| `react_memory` | ReAct agent with memory tools |
 | `memory_checkpoint` | Checkpointing and state recovery |
 | `memory_persistence` | Persistent storage with SQLite |
+| `openai_embedding` | OpenAI embeddings for vector search |
 | `state_graph_echo` | State graph with conditional routing |
 
 Run examples:
@@ -373,29 +376,20 @@ pub trait Agent {
 
 ### State Graphs
 
-Compose agents into graphs with conditional routing:
+Build a **linear chain** with `add_node` and `add_edge` (use `START` and `END`). At runtime, each node returns `Next` (Continue, Node(id), or End); the runner follows the chain or jumps. For example, ReAct uses think → act → observe → (observe returns `Next::Node("think")` to loop or `Next::End` to stop).
 
 ```rust
-use langgraph::{StateGraph, Next};
+use langgraph::{StateGraph, START, END};
 use std::sync::Arc;
 
 let mut graph = StateGraph::new();
-graph.add_node("agent", Arc::new(agent));
-graph.add_node("tools", Arc::new(tools));
-
-// Conditional routing
-graph.add_conditional_edges(
-    "agent",
-    |state| {
-        if state.tool_calls.is_empty() {
-            Next::End
-        } else {
-            Next::Node("tools")
-        }
-    },
-);
-
-graph.add_edge("tools", "agent");
+graph.add_node("think", Arc::new(think_node));
+graph.add_node("act", Arc::new(act_node));
+graph.add_node("observe", Arc::new(observe_node));
+graph.add_edge(START, "think");
+graph.add_edge("think", "act");
+graph.add_edge("act", "observe");
+graph.add_edge("observe", END);
 
 let compiled = graph.compile()?;
 let result = compiled.invoke(state, None).await?;
@@ -605,10 +599,10 @@ let messages = vec![
 ];
 let response = llm.invoke(&messages).await?;
 
-// Or use OpenAI-compatible (with feature "openai")
+// Or use OpenAI-compatible (with feature "openai", API key from OPENAI_API_KEY env)
 use langgraph::ChatOpenAI;
 
-let llm = ChatOpenAI::new("your-api-key");
+let llm = ChatOpenAI::new("gpt-4o-mini");
 ```
 
 ### Tools
@@ -657,6 +651,8 @@ langgraph-rust/
 │   │   ├── memory/      # Checkpointing and storage
 │   │   └── tool_source/ # Tool execution & MCP
 │   └── Cargo.toml
+├── langgraph-cli/       # CLI to run ReAct agents (see langgraph-cli/README.md)
+│   └── src/
 └── langgraph-examples/  # Example agents and usage
     └── examples/
 ```
