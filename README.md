@@ -69,6 +69,22 @@ impl Agent for EchoAgent {
         Ok(MyState { messages })
     }
 }
+
+#[tokio::main]
+async fn main() {
+    let mut state = MyState::default();
+    state.messages.push(Message::User("hello, world!".to_string()));
+
+    let agent = EchoAgent;
+    match agent.run(state).await {
+        Ok(s) => {
+            if let Some(Message::Assistant(content)) = s.messages.last() {
+                println!("{}", content);
+            }
+        }
+        Err(e) => eprintln!("error: {}", e),
+    }
+}
 ```
 
 Run the echo example:
@@ -205,8 +221,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 Create custom tools by implementing the `ToolSource` trait:
 
 ```rust
-use langgraph::{ToolSource, ToolSourceError, ToolSpec};
 use async_trait::async_trait;
+use langgraph::{ToolSource, ToolSourceError, ToolSpec, ToolCallContent};
+use serde_json::json;
 
 struct MyTools;
 
@@ -214,23 +231,32 @@ struct MyTools;
 impl ToolSource for MyTools {
     async fn list_tools(&self) -> Result<Vec<ToolSpec>, ToolSourceError> {
         Ok(vec![
-            ToolSpec::new(
-                "calculator",
-                "Perform mathematical calculations",
-                "{ \"expression\": \"string\" }",
-            ),
+            ToolSpec {
+                name: "calculator".to_string(),
+                description: Some("Perform mathematical calculations".to_string()),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "expression": {"type": "string"}
+                    },
+                    "required": ["expression"]
+                }),
+            },
         ])
     }
 
-    async fn call_tool(&self, name: &str, input: serde_json::Value)
-        -> Result<String, ToolSourceError>
-    {
+    async fn call_tool(
+        &self,
+        name: &str,
+        arguments: serde_json::Value,
+    ) -> Result<ToolCallContent, ToolSourceError> {
         match name {
             "calculator" => {
                 // Parse and calculate
-                Ok("42".to_string())
+                let result = "42";
+                Ok(ToolCallContent { text: result.to_string() })
             }
-            _ => Err(ToolSourceError::ToolNotFound(name.to_string())),
+            _ => Err(ToolSourceError::NotFound(name.to_string())),
         }
     }
 }
@@ -302,12 +328,12 @@ pub trait Agent {
 Compose agents into graphs with conditional routing:
 
 ```rust
-use langgraph::{StateGraph, Node, Next};
+use langgraph::{StateGraph, Next};
+use std::sync::Arc;
 
 let mut graph = StateGraph::new();
-graph.add_node(Node::new("agent", agent));
-graph.add_node(Node::new("tools", tools));
-graph.set_entry_point("agent");
+graph.add_node("agent", Arc::new(agent));
+graph.add_node("tools", Arc::new(tools));
 
 // Conditional routing
 graph.add_conditional_edges(
@@ -324,7 +350,7 @@ graph.add_conditional_edges(
 graph.add_edge("tools", "agent");
 
 let compiled = graph.compile()?;
-let result = compiled.invoke(state).await?;
+let result = compiled.invoke(state, None).await?;
 ```
 
 ### ReAct Pattern
@@ -332,34 +358,145 @@ let result = compiled.invoke(state).await?;
 Built-in ReAct nodes for reasoning + tool use:
 
 ```rust
-use langgraph::react::{ThinkNode, ActNode, ObserveNode};
+use langgraph::{StateGraph, ThinkNode, ActNode, ObserveNode};
+use std::sync::Arc;
 
 let mut graph = StateGraph::new();
-graph.add_node(Node::new("think", ThinkNode::new(llm)));
-graph.add_node(Node::new("act", ActNode::new(tools)));
-graph.add_node(Node::new("observe", ObserveNode::new(llm)));
+graph.add_node("think", Arc::new(ThinkNode::new(Box::new(llm))));
+graph.add_node("act", Arc::new(ActNode::new(Box::new(tools))));
+graph.add_node("observe", Arc::new(ObserveNode::new()));
 ```
 
-### Memory & Checkpointing
+### Memory: Short-term & Long-term
 
-Save and restore agent state:
+LangGraph-rust provides two types of memory for different use cases:
+
+#### Short-term Memory (Checkpointer)
+
+**Purpose**: Save and restore conversation state within a single session/thread
+
+- Per-thread state snapshots for resumable conversations
+- Time-travel: load any historical checkpoint
+- Branching: create alternate conversation paths
+
+**Implementations**:
+- `MemorySaver` - In-memory (dev/tests)
+- `SqliteSaver` - Persistent SQLite file (production)
 
 ```rust
-use langgraph::memory::MemorySaver;
+use langgraph::memory::{MemorySaver, RunnableConfig};
+use std::sync::Arc;
 
-let checkpointer = MemorySaver::new();
-let compiled = graph.compile().with_checkpointer(checkpointer)?;
+let checkpointer = Arc::new(MemorySaver::new());
+let compiled = graph.compile_with_checkpointer(checkpointer)?;
 
 let config = RunnableConfig {
-    thread_id: "thread-1",
+    thread_id: Some("conversation-1"),
     checkpoint_id: None,
+    checkpoint_ns: String::new(),
+    user_id: None,
 };
 
-// Run with checkpointing
+// First invoke - saves checkpoint
 let result = compiled.invoke(state, Some(config)).await?;
 
-// Resume from checkpoint
-let result2 = compiled.invoke(state, Some(config)).await?;
+// Resume from last checkpoint
+let result2 = compiled.invoke(result, Some(config)).await?;
+```
+
+#### Long-term Memory (Store)
+
+**Purpose**: Cross-session key-value storage for persistent knowledge
+
+- Store preferences, facts, documents across sessions
+- Namespace isolation (e.g., by user_id)
+- Optional semantic search via LanceDB vector store
+
+**Implementations**:
+- `InMemoryStore` - In-memory (dev/tests)
+- `SqliteStore` - Persistent SQLite file (key-value search)
+- `LanceStore` - Persistent LanceDB vector store (semantic search)
+
+```rust
+use langgraph::memory::{InMemoryStore, Namespace, Store, StoreError};
+use std::sync::Arc;
+
+let store = Arc::new(InMemoryStore::new());
+
+let ns = Namespace::new(&["user-123", "preferences"]);
+store.put(&ns, "theme", "dark").await?;
+
+// Retrieve
+let theme = store.get(&ns, "theme").await?;
+assert_eq!(theme, Some("dark".to_string()));
+
+// List all keys
+let items = store.list(&ns).await?;
+```
+
+#### Semantic Search with LanceDB
+
+Vector-based semantic search for retrieving relevant memories:
+
+```rust
+use langgraph::memory::{LanceStore, Namespace, Store, Embedder};
+use std::sync::Arc;
+
+// Custom embedder
+struct MyEmbedder;
+impl Embedder for MyEmbedder {
+    fn dimension(&self) -> usize { 768 }
+    fn embed(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, Box<dyn std::error::Error>> {
+        // Use your embedding model (e.g., OpenAI, sentence-transformers)
+        Ok(texts.iter().map(|_| vec![0.0; 768]).collect())
+    }
+}
+
+let store = Arc::new(LanceStore::new("data/memories.lance", MyEmbedder)?);
+let ns = Namespace::new(&["user-123", "memories"]);
+
+// Store memories (automatically embedded)
+store.put(&ns, "doc-1", "User likes Rust and enjoys hiking").await?;
+
+// Semantic search
+let results = store.search(
+    &ns,
+    Some("outdoor activities"),  // semantic query
+    5,                            // limit
+    None,                         // optional filter
+).await?;
+```
+
+#### When to Use Which
+
+| Use Case | Recommended |
+|----------|-------------|
+| Multi-turn conversation state | Short-term (Checkpointer) |
+| Resume interrupted conversations | Short-term (Checkpointer) |
+| Time-travel / branching | Short-term (Checkpointer) |
+| User preferences | Long-term (Store) |
+| Facts / documents | Long-term (Store) |
+| Semantic search | Long-term (LanceStore) |
+
+#### Combining Both
+
+Use checkpointer for conversation flow and Store for persistent knowledge:
+
+```rust
+use langgraph::{
+    Checkpointer, InMemoryStore, JsonSerializer, Message, RunnableConfig, SqliteSaver,
+};
+use std::sync::Arc;
+
+let serializer = Arc::new(JsonSerializer);
+let checkpointer: Arc<dyn Checkpointer<YourState>> =
+    Arc::new(SqliteSaver::new("data/checkpoints.db", serializer)?);
+let store = Arc::new(InMemoryStore::new());
+
+let compiled = graph.compile_with_checkpointer(checkpointer)?;
+
+// In your node, use store to read/write persistent memories
+let user_pref = store.get(&ns, "theme").await?;
 ```
 
 ### LLM Integration
@@ -367,10 +504,14 @@ let result2 = compiled.invoke(state, Some(config)).await?;
 Use the `LlmClient` trait with various backends:
 
 ```rust
-use langgraph::llm::{LlmClient, MockLlm};
+use langgraph::{LlmClient, MockLlm, Message};
 
 let llm = MockLlm::new();
-let response = llm.chat("Hello, world!").await?;
+let messages = vec![
+    Message::system("You are a helpful assistant."),
+    Message::user("Hello, world!"),
+];
+let response = llm.invoke(&messages).await?;
 
 // Or use OpenAI-compatible (with feature "zhipu")
 use langgraph::ChatZhipu;
@@ -380,14 +521,35 @@ let llm = ChatZhipu::new("your-api-key");
 
 ### Tools
 
-Define and execute tools:
+Define and execute tools via `ToolSource`:
 
 ```rust
 use langgraph::{ToolSpec, ToolSource};
+use serde_json::json;
 
 let tools = vec![
-    ToolSpec::new("search", "Search the web", search_tool),
-    ToolSpec::new("calculate", "Perform calculations", calc_tool),
+    ToolSpec {
+        name: "search".to_string(),
+        description: Some("Search the web".to_string()),
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"}
+            },
+            "required": ["query"]
+        }),
+    },
+    ToolSpec {
+        name: "calculate".to_string(),
+        description: Some("Perform calculations".to_string()),
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "expression": {"type": "string"}
+            },
+            "required": ["expression"]
+        }),
+    },
 ];
 ```
 
