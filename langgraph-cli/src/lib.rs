@@ -15,12 +15,155 @@ use std::sync::Arc;
 
 use async_openai::config::OpenAIConfig;
 use langgraph::{
-    ActNode, ChatOpenAI, CompiledStateGraph, MockToolSource, ObserveNode, StateGraph, ThinkNode,
-    ToolChoiceMode, ToolSource, END, REACT_SYSTEM_PROMPT, START,
+    ActNode, ChatOpenAI, CompiledStateGraph, MockToolSource, Namespace, ObserveNode,
+    RunnableConfig, SqliteSaver, SqliteStore, Store, StateGraph, ThinkNode,
+    ToolChoiceMode, ToolSource, ToolSourceError, ToolSpec, END, REACT_SYSTEM_PROMPT, START,
 };
+use serde_json::{json, Value};
 
 mod logging_middleware;
 use logging_middleware::LoggingMiddleware;
+
+/// Memory tool source for long-term memory (save, retrieve, list).
+struct MemoryToolSource {
+    store: Arc<dyn Store>,
+    namespace: Namespace,
+}
+
+impl MemoryToolSource {
+    fn new(store: Arc<dyn Store>, namespace: Namespace) -> Self {
+        Self { store, namespace }
+    }
+}
+
+#[async_trait::async_trait]
+impl ToolSource for MemoryToolSource {
+    async fn list_tools(&self) -> Result<Vec<ToolSpec>, ToolSourceError> {
+        Ok(vec![
+            ToolSpec {
+                name: "save_memory".to_string(),
+                description: Some(
+                    "Save information to long-term memory. Use when user says 'remember' or shares preferences."
+                        .to_string(),
+                ),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "info": {
+                            "type": "string",
+                            "description": "Information to remember (e.g., 'name is Alice', 'likes coffee')"
+                        }
+                    },
+                    "required": ["info"]
+                }),
+            },
+            ToolSpec {
+                name: "retrieve_memory".to_string(),
+                description: Some("Retrieve specific memory by key. Use for questions like 'what's my name'.".to_string()),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "key": {
+                            "type": "string",
+                            "description": "Key to retrieve (e.g., 'name', 'preferences')"
+                        }
+                    },
+                    "required": ["key"]
+                }),
+            },
+            ToolSpec {
+                name: "list_memories".to_string(),
+                description: Some(
+                    "List all stored memories for the user. Use for 'what do you know about me'."
+                        .to_string(),
+                ),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {},
+                }),
+            },
+        ])
+    }
+
+    async fn call_tool(
+        &self,
+        name: &str,
+        arguments: Value,
+    ) -> Result<langgraph::ToolCallContent, ToolSourceError> {
+        match name {
+            "save_memory" => {
+                let info = arguments["info"].as_str().unwrap_or("").to_string();
+                let timestamp = chrono::Utc::now().to_rfc3339();
+                let key = format!(
+                    "memory_{}",
+                    chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+                );
+                let value = json!({
+                    "info": info,
+                    "timestamp": timestamp
+                });
+                self.store
+                    .put(&self.namespace, &key, &value)
+                    .await
+                    .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
+                Ok(langgraph::ToolCallContent {
+                    text: format!("Saved to memory: {}", info),
+                })
+            }
+            "retrieve_memory" => {
+                let key = arguments["key"].as_str().unwrap_or("");
+                let hits = self
+                    .store
+                    .search(&self.namespace, Some(key), Some(5))
+                    .await
+                    .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
+                if hits.is_empty() {
+                    Ok(langgraph::ToolCallContent {
+                        text: format!("No memories found for '{}'", key),
+                    })
+                } else {
+                    let memories: Vec<String> = hits
+                        .iter()
+                        .map(|h| h.value["info"].as_str().unwrap_or("").to_string())
+                        .collect();
+                    Ok(langgraph::ToolCallContent {
+                        text: format!("Found memories: {}", memories.join(", ")),
+                    })
+                }
+            }
+            "list_memories" => {
+                let keys = self
+                    .store
+                    .list(&self.namespace)
+                    .await
+                    .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
+                let mut memories = Vec::new();
+                for key in keys {
+                    if let Some(value) = self
+                        .store
+                        .get(&self.namespace, &key)
+                        .await
+                        .map_err(|e| ToolSourceError::Transport(e.to_string()))?
+                    {
+                        if let Some(info) = value["info"].as_str() {
+                            memories.push(info.to_string());
+                        }
+                    }
+                }
+                if memories.is_empty() {
+                    Ok(langgraph::ToolCallContent {
+                        text: "No memories stored yet. Tell me something to remember!".to_string(),
+                    })
+                } else {
+                    Ok(langgraph::ToolCallContent {
+                        text: format!("I remember: {}", memories.join("; ")),
+                    })
+                }
+            }
+            _ => Err(ToolSourceError::NotFound(format!("Unknown tool: {}", name))),
+        }
+    }
+}
 
 /// Extension trait for fluent API: attach node logging middleware then compile.
 /// Example of extending the build chain from outside langgraph; see idea/NODE_MIDDLEWARE_OPTIONS.md.
@@ -60,6 +203,12 @@ pub struct RunConfig {
     pub embedding_api_base: Option<String>,
     /// Embeddings model name, e.g. `text-embedding-3-small`.
     pub embedding_model: Option<String>,
+    /// Thread ID for short-term memory (checkpointer). Required for persistence.
+    pub thread_id: Option<String>,
+    /// User ID for long-term memory (store). Used for multi-tenant isolation.
+    pub user_id: Option<String>,
+    /// SQLite database path for persistence. Defaults to "memory.db".
+    pub db_path: Option<String>,
 }
 
 impl RunConfig {
@@ -107,6 +256,7 @@ impl RunConfig {
     /// `OPENAI_API_KEY` required; `OPENAI_API_BASE`, `OPENAI_MODEL` have defaults.
     /// `OPENAI_TEMPERATURE`, `OPENAI_TOOL_CHOICE` (auto|none|required) optional.
     /// For embeddings: `EMBEDDING_API_KEY`, `EMBEDDING_API_BASE`, `EMBEDDING_MODEL` optional.
+    /// For memory: `THREAD_ID`, `USER_ID`, `DB_PATH` optional.
     pub fn from_env() -> Result<Self, Error> {
         let api_key = std::env::var("OPENAI_API_KEY").map_err(|_| {
             std::io::Error::new(
@@ -128,6 +278,9 @@ impl RunConfig {
         let embedding_model = std::env::var("EMBEDDING_MODEL")
             .ok()
             .or_else(|| Some("text-embedding-3-small".to_string()));
+        let thread_id = std::env::var("THREAD_ID").ok();
+        let user_id = std::env::var("USER_ID").ok();
+        let db_path = std::env::var("DB_PATH").ok();
         Ok(Self {
             api_base,
             api_key,
@@ -137,6 +290,9 @@ impl RunConfig {
             embedding_api_key,
             embedding_api_base,
             embedding_model,
+            thread_id,
+            user_id,
+            db_path,
         })
     }
 }
@@ -151,6 +307,97 @@ pub async fn run(user_message: &str) -> Result<ReActState, Error> {
 }
 
 /// Run ReAct graph with given config; does not read .env, returns final state.
+#[cfg(feature = "sqlite")]
+pub async fn run_with_config(config: &RunConfig, user_message: &str) -> Result<ReActState, Error> {
+    let openai_config = OpenAIConfig::new()
+        .with_api_base(&config.api_base)
+        .with_api_key(config.api_key.clone());
+
+    let db_path = config.db_path.as_deref().unwrap_or("memory.db");
+
+    let checkpointer = if config.thread_id.is_some() {
+        let serializer = Arc::new(langgraph::JsonSerializer);
+        Some(Arc::new(SqliteSaver::new(db_path, serializer)?) as Arc<dyn langgraph::Checkpointer<ReActState>>)
+    } else {
+        None
+    };
+
+    let store = if config.user_id.is_some() {
+        Some(Arc::new(SqliteStore::new(db_path)?) as Arc<dyn langgraph::Store>)
+    } else {
+        None
+    };
+
+    let tool_source: Box<dyn ToolSource> = if let Some(user_id) = &config.user_id {
+        if let Some(s) = &store {
+            let namespace = vec![user_id.clone(), "memories".to_string()];
+            Box::new(MemoryToolSource::new(s.clone(), namespace))
+        } else {
+            Box::new(MockToolSource::get_time_example())
+        }
+    } else {
+        Box::new(MockToolSource::get_time_example())
+    };
+
+    let tools = tool_source.list_tools().await?;
+    let mut llm = ChatOpenAI::with_config(openai_config, config.model.clone()).with_tools(tools);
+    if let Some(t) = config.temperature {
+        llm = llm.with_temperature(t);
+    }
+    if let Some(tc) = config.tool_choice {
+        llm = llm.with_tool_choice(tc);
+    }
+    let think = ThinkNode::new(Box::new(llm));
+    let act = ActNode::new(tool_source);
+    let observe = ObserveNode::new();
+
+    let mut graph = StateGraph::<ReActState>::new();
+
+    if let Some(s) = store {
+        graph = graph.with_store(s);
+    }
+
+    graph
+        .add_node("think", Arc::new(think))
+        .add_node("act", Arc::new(act))
+        .add_node("observe", Arc::new(observe))
+        .add_edge(START, "think")
+        .add_edge("think", "act")
+        .add_edge("act", "observe")
+        .add_edge("observe", END);
+
+    let compiled: CompiledStateGraph<ReActState> = if let Some(cp) = checkpointer {
+        graph.with_node_logging().compile_with_checkpointer(cp)?
+    } else {
+        graph.with_node_logging().compile()?
+    };
+
+    let runnable_config = if config.thread_id.is_some() || config.user_id.is_some() {
+        Some(RunnableConfig {
+            thread_id: config.thread_id.clone(),
+            checkpoint_id: None,
+            checkpoint_ns: String::new(),
+            user_id: config.user_id.clone(),
+        })
+    } else {
+        None
+    };
+
+    let state = ReActState {
+        messages: vec![
+            Message::system(REACT_SYSTEM_PROMPT),
+            Message::user(user_message.to_string()),
+        ],
+        tool_calls: vec![],
+        tool_results: vec![],
+    };
+
+    let final_state = compiled.invoke(state, runnable_config).await?;
+    Ok(final_state)
+}
+
+/// Run ReAct graph with given config; does not read .env, returns final state.
+#[cfg(not(feature = "sqlite"))]
 pub async fn run_with_config(config: &RunConfig, user_message: &str) -> Result<ReActState, Error> {
     let openai_config = OpenAIConfig::new()
         .with_api_base(&config.api_base)

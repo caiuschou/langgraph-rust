@@ -22,6 +22,18 @@ struct Args {
     /// Tool choice: auto (default), none, required
     #[arg(long, value_name = "MODE")]
     tool_choice: Option<String>,
+
+    /// Thread ID for short-term memory (checkpointer)
+    #[arg(long, value_name = "ID")]
+    thread_id: Option<String>,
+
+    /// User ID for long-term memory (store)
+    #[arg(long, value_name = "ID")]
+    user_id: Option<String>,
+
+    /// SQLite database path for persistence
+    #[arg(long, value_name = "PATH")]
+    db_path: Option<String>,
 }
 
 fn get_message(args: &Args) -> String {
@@ -58,6 +70,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 std::process::exit(1);
             }
         });
+    }
+    if args.thread_id.is_some() {
+        config.thread_id = args.thread_id;
+    }
+    if args.user_id.is_some() {
+        config.user_id = args.user_id;
+    }
+    if args.db_path.is_some() {
+        config.db_path = args.db_path;
     }
 
     println!("User: {}", input);
