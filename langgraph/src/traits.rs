@@ -51,8 +51,6 @@ where
     }
 
     async fn run(&self, state: S) -> Result<(S, Next), AgentError> {
-        Agent::run(self, state)
-            .await
-            .map(|s| (s, Next::Continue))
+        Agent::run(self, state).await.map(|s| (s, Next::Continue))
     }
 }
