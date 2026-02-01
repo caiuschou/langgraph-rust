@@ -6,6 +6,7 @@
 //! and result content.
 
 use crate::message::Message;
+use serde::{Deserialize, Serialize};
 
 /// A single tool invocation produced by the LLM (Think node) and consumed by Act.
 ///
@@ -14,7 +15,7 @@ use crate::message::Message;
 ///
 /// **Interaction**: Written by ThinkNode from LLM output; read by ActNode to call
 /// `ToolSource::call_tool(name, arguments)`.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ToolCall {
     /// Tool name as registered in ToolSource (e.g. MCP tools/list).
     pub name: String,
@@ -31,7 +32,7 @@ pub struct ToolCall {
 ///
 /// **Interaction**: Written by ActNode from `ToolSource::call_tool` result; read by
 /// ObserveNode to append to messages or internal state and then clear.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ToolResult {
     /// Id of the tool call this result belongs to (if ToolCall had `id`).
     pub call_id: Option<String>,
