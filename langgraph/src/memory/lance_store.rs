@@ -5,12 +5,12 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use arrow_array::{Float32Array, RecordBatch, RecordBatchIterator, StringArray};
+use arrow_array::{Array, Float32Array, RecordBatch, RecordBatchIterator, StringArray};
 use arrow_array::types::Float32Type;
 use arrow_array::FixedSizeListArray;
 use arrow_schema::{DataType, Field, Schema};
 use async_trait::async_trait;
-use futures::{StreamExt, TryStreamExt};
+use futures::TryStreamExt;
 use lancedb::connection::Connection;
 use lancedb::query::ExecutableQuery;
 use lancedb::query::QueryBase;
@@ -200,7 +200,7 @@ impl Store for LanceStore {
         let pred_key = escape_sql(key);
         let predicate = format!("ns = '{}' AND key = '{}'", pred_ns, pred_key);
         let table = self.open_table().await?;
-        let mut stream = table
+        let stream = table
             .query()
             .only_if(predicate)
             .limit(1)
@@ -232,7 +232,7 @@ impl Store for LanceStore {
         let pred_ns = escape_sql(&ns);
         let predicate = format!("ns = '{}'", pred_ns);
         let table = self.open_table().await?;
-        let mut stream = table
+        let stream = table
             .query()
             .only_if(predicate)
             .execute()
@@ -284,7 +284,7 @@ impl Store for LanceStore {
                         self.dimension
                     )));
                 }
-                let mut stream = table
+                let stream = table
                     .query()
                     .nearest_to(query_vec.as_slice())
                     .map_err(|e| StoreError::Storage(e.to_string()))?
@@ -334,7 +334,7 @@ impl Store for LanceStore {
             }
         }
 
-        let mut stream = table
+        let stream = table
             .query()
             .only_if(predicate)
             .limit(limit)
