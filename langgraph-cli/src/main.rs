@@ -1,7 +1,7 @@
 //! ReAct Agent binary: parses CLI message, invokes the library and prints the result.
 
 use clap::Parser;
-use langgraph_cli::{run_with_config, Message, RunConfig};
+use langgraph_cli::{run_with_config, MemoryConfig, Message, RunConfig};
 
 #[derive(Parser, Debug)]
 #[command(name = "langgraph")]
@@ -83,11 +83,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         });
     }
-    if args.thread_id.is_some() {
-        config.thread_id = args.thread_id;
-    }
-    if args.user_id.is_some() {
-        config.user_id = args.user_id;
+    if args.thread_id.is_some() || args.user_id.is_some() {
+        config.memory = match (args.thread_id, args.user_id) {
+            (Some(tid), Some(uid)) => MemoryConfig::Both {
+                thread_id: tid,
+                user_id: uid,
+            },
+            (Some(tid), None) => MemoryConfig::ShortTerm { thread_id: tid },
+            (None, Some(uid)) => MemoryConfig::LongTerm { user_id: uid },
+            (None, None) => MemoryConfig::NoMemory,
+        };
     }
     if args.db_path.is_some() {
         config.db_path = args.db_path;

@@ -16,8 +16,8 @@ use std::sync::Arc;
 use async_openai::config::OpenAIConfig;
 use langgraph::{
     ActNode, ChatOpenAI, CompiledStateGraph, MockToolSource, Namespace, ObserveNode,
-    RunnableConfig, SqliteSaver, SqliteStore, Store, StateGraph, ThinkNode,
-    ToolChoiceMode, ToolSource, ToolSourceError, ToolSpec, END, REACT_SYSTEM_PROMPT, START,
+    RunnableConfig, SqliteSaver, SqliteStore, StateGraph, Store, ThinkNode, ToolChoiceMode,
+    ToolSource, ToolSourceError, ToolSpec, END, REACT_SYSTEM_PROMPT, START,
 };
 use serde_json::{json, Value};
 
@@ -184,6 +184,23 @@ pub use langgraph::{Message, ReActState};
 /// Error type used internally.
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 
+/// Memory configuration for enabling short-term and/or long-term memory.
+#[derive(Clone, Debug, Default)]
+pub enum MemoryConfig {
+    #[default]
+    NoMemory,
+    ShortTerm {
+        thread_id: String,
+    },
+    LongTerm {
+        user_id: String,
+    },
+    Both {
+        thread_id: String,
+        user_id: String,
+    },
+}
+
 /// Run config: API base, key, model, temperature, tool_choice. Can be filled from env / .env.
 #[derive(Clone, Debug)]
 pub struct RunConfig {
@@ -203,10 +220,8 @@ pub struct RunConfig {
     pub embedding_api_base: Option<String>,
     /// Embeddings model name, e.g. `text-embedding-3-small`.
     pub embedding_model: Option<String>,
-    /// Thread ID for short-term memory (checkpointer). Required for persistence.
-    pub thread_id: Option<String>,
-    /// User ID for long-term memory (store). Used for multi-tenant isolation.
-    pub user_id: Option<String>,
+    /// Memory configuration for short-term and/or long-term memory.
+    pub memory: MemoryConfig,
     /// SQLite database path for persistence. Defaults to "memory.db".
     pub db_path: Option<String>,
     /// Use Exa MCP for web search. Enables Exa's remote MCP server.
@@ -222,6 +237,55 @@ pub struct RunConfig {
 }
 
 impl RunConfig {
+    /// Enable short-term memory (checkpointer) for conversation history.
+    pub fn with_short_term_memory(mut self, thread_id: &str) -> Self {
+        self.memory = MemoryConfig::ShortTerm {
+            thread_id: thread_id.to_string(),
+        };
+        self
+    }
+
+    /// Enable long-term memory (store) for persistent facts and preferences.
+    pub fn with_long_term_memory(mut self, user_id: &str) -> Self {
+        self.memory = MemoryConfig::LongTerm {
+            user_id: user_id.to_string(),
+        };
+        self
+    }
+
+    /// Enable both short-term and long-term memory.
+    pub fn with_memory(mut self, thread_id: &str, user_id: &str) -> Self {
+        self.memory = MemoryConfig::Both {
+            thread_id: thread_id.to_string(),
+            user_id: user_id.to_string(),
+        };
+        self
+    }
+
+    /// Disable memory (both short-term and long-term).
+    pub fn without_memory(mut self) -> Self {
+        self.memory = MemoryConfig::NoMemory;
+        self
+    }
+
+    /// Get thread ID for short-term memory (checkpointer).
+    pub fn thread_id(&self) -> Option<&str> {
+        match &self.memory {
+            MemoryConfig::ShortTerm { thread_id } => Some(thread_id),
+            MemoryConfig::Both { thread_id, .. } => Some(thread_id),
+            _ => None,
+        }
+    }
+
+    /// Get user ID for long-term memory (store).
+    pub fn user_id(&self) -> Option<&str> {
+        match &self.memory {
+            MemoryConfig::LongTerm { user_id } => Some(user_id),
+            MemoryConfig::Both { user_id, .. } => Some(user_id),
+            _ => None,
+        }
+    }
+
     /// Get the effective embedding API key (falls back to OPENAI_API_KEY if not set).
     pub fn embedding_api_key(&self) -> &str {
         self.embedding_api_key.as_deref().unwrap_or(&self.api_key)
@@ -297,12 +361,20 @@ impl RunConfig {
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or_else(|| exa_api_key.is_some());
-        let mcp_exa_url = std::env::var("MCP_EXA_URL")
-            .unwrap_or_else(|_| "https://mcp.exa.ai/mcp".to_string());
-        let mcp_remote_cmd = std::env::var("MCP_REMOTE_CMD")
-            .unwrap_or_else(|_| "npx".to_string());
-        let mcp_remote_args = std::env::var("MCP_REMOTE_ARGS")
-            .unwrap_or_else(|_| "-y mcp-remote".to_string());
+        let mcp_exa_url =
+            std::env::var("MCP_EXA_URL").unwrap_or_else(|_| "https://mcp.exa.ai/mcp".to_string());
+        let mcp_remote_cmd = std::env::var("MCP_REMOTE_CMD").unwrap_or_else(|_| "npx".to_string());
+        let mcp_remote_args =
+            std::env::var("MCP_REMOTE_ARGS").unwrap_or_else(|_| "-y mcp-remote".to_string());
+        let memory = match (thread_id, user_id) {
+            (Some(tid), Some(uid)) => MemoryConfig::Both {
+                thread_id: tid,
+                user_id: uid,
+            },
+            (Some(tid), None) => MemoryConfig::ShortTerm { thread_id: tid },
+            (None, Some(uid)) => MemoryConfig::LongTerm { user_id: uid },
+            (None, None) => MemoryConfig::NoMemory,
+        };
         Ok(Self {
             api_base,
             api_key,
@@ -312,8 +384,7 @@ impl RunConfig {
             embedding_api_key,
             embedding_api_base,
             embedding_model,
-            thread_id,
-            user_id,
+            memory,
             db_path,
             use_exa_mcp,
             exa_api_key,
@@ -342,14 +413,15 @@ pub async fn run_with_config(config: &RunConfig, user_message: &str) -> Result<R
 
     let db_path = config.db_path.as_deref().unwrap_or("memory.db");
 
-    let checkpointer = if config.thread_id.is_some() {
+    let checkpointer = if config.thread_id().is_some() {
         let serializer = Arc::new(langgraph::JsonSerializer);
-        Some(Arc::new(SqliteSaver::new(db_path, serializer)?) as Arc<dyn langgraph::Checkpointer<ReActState>>)
+        Some(Arc::new(SqliteSaver::new(db_path, serializer)?)
+            as Arc<dyn langgraph::Checkpointer<ReActState>>)
     } else {
         None
     };
 
-    let store = if config.user_id.is_some() {
+    let store = if config.user_id().is_some() {
         Some(Arc::new(SqliteStore::new(db_path)?) as Arc<dyn langgraph::Store>)
     } else {
         None
@@ -358,9 +430,16 @@ pub async fn run_with_config(config: &RunConfig, user_message: &str) -> Result<R
     let tool_source: Box<dyn ToolSource> = if config.use_exa_mcp {
         #[cfg(feature = "mcp")]
         {
-            let args: Vec<String> = config.mcp_remote_args.split_whitespace().map(String::from).collect();
+            let args: Vec<String> = config
+                .mcp_remote_args
+                .split_whitespace()
+                .map(String::from)
+                .collect();
             let mut args = args;
-            if !args.iter().any(|a| a == &config.mcp_exa_url || a.contains("mcp.exa.ai")) {
+            if !args
+                .iter()
+                .any(|a| a == &config.mcp_exa_url || a.contains("mcp.exa.ai"))
+            {
                 args.push(config.mcp_exa_url.clone());
             }
             if let Some(ref key) = config.exa_api_key {
@@ -374,16 +453,19 @@ pub async fn run_with_config(config: &RunConfig, user_message: &str) -> Result<R
                     env,
                 )?)
             } else {
-                Box::new(langgraph::McpToolSource::new(config.mcp_remote_cmd.clone(), args)?)
+                Box::new(langgraph::McpToolSource::new(
+                    config.mcp_remote_cmd.clone(),
+                    args,
+                )?)
             }
         }
         #[cfg(not(feature = "mcp"))]
         {
             return Err("MCP feature is not enabled. Build with --features mcp".into());
         }
-    } else if let Some(user_id) = &config.user_id {
+    } else if let Some(user_id) = config.user_id() {
         if let Some(s) = &store {
-            let namespace = vec![user_id.clone(), "memories".to_string()];
+            let namespace = vec![user_id.to_string(), "memories".to_string()];
             Box::new(MemoryToolSource::new(s.clone(), namespace))
         } else {
             Box::new(MockToolSource::get_time_example())
@@ -425,12 +507,12 @@ pub async fn run_with_config(config: &RunConfig, user_message: &str) -> Result<R
         graph.with_node_logging().compile()?
     };
 
-    let runnable_config = if config.thread_id.is_some() || config.user_id.is_some() {
+    let runnable_config = if config.thread_id().is_some() || config.user_id().is_some() {
         Some(RunnableConfig {
-            thread_id: config.thread_id.clone(),
+            thread_id: config.thread_id().map(ToString::to_string),
             checkpoint_id: None,
             checkpoint_ns: String::new(),
-            user_id: config.user_id.clone(),
+            user_id: config.user_id().map(ToString::to_string),
         })
     } else {
         None
@@ -459,9 +541,16 @@ pub async fn run_with_config(config: &RunConfig, user_message: &str) -> Result<R
     let tool_source: Box<dyn ToolSource> = if config.use_exa_mcp {
         #[cfg(feature = "mcp")]
         {
-            let args: Vec<String> = config.mcp_remote_args.split_whitespace().map(String::from).collect();
+            let args: Vec<String> = config
+                .mcp_remote_args
+                .split_whitespace()
+                .map(String::from)
+                .collect();
             let mut args = args;
-            if !args.iter().any(|a| a == &config.mcp_exa_url || a.contains("mcp.exa.ai")) {
+            if !args
+                .iter()
+                .any(|a| a == &config.mcp_exa_url || a.contains("mcp.exa.ai"))
+            {
                 args.push(config.mcp_exa_url.clone());
             }
             if let Some(ref key) = config.exa_api_key {
@@ -475,7 +564,10 @@ pub async fn run_with_config(config: &RunConfig, user_message: &str) -> Result<R
                     env,
                 )?)
             } else {
-                Box::new(langgraph::McpToolSource::new(config.mcp_remote_cmd.clone(), args)?)
+                Box::new(langgraph::McpToolSource::new(
+                    config.mcp_remote_cmd.clone(),
+                    args,
+                )?)
             }
         }
         #[cfg(not(feature = "mcp"))]
