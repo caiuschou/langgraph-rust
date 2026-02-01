@@ -42,15 +42,20 @@ path = "examples/react_mcp.rs"
 name = "react_mcp_gitlab"
 path = "examples/react_mcp_gitlab.rs"
 
+[[example]]
+name = "react_memory"
+path = "examples/react_memory.rs"
+
 [features]
 default = ["zhipu", "mcp"]
 zhipu = []
 mcp = []
 
 [dependencies]
-langgraph = { path = "../langgraph", features = ["zhipu"] }
+langgraph = { path = "../langgraph", features = ["zhipu", "sqlite", "lance"] }
 tokio = { workspace = true }
 async-trait = { workspace = true }
 dotenv = { workspace = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+chrono = "0.4"
