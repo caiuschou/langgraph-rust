@@ -1,24 +1,21 @@
 //! Run ReAct graph with given config (no SQLite); does not read .env, returns final state.
 //!
 //! No checkpointer or store. Interacts with [`RunConfig`](crate::config::RunConfig),
-//! [`WithNodeLogging`](crate::middleware::WithNodeLogging).
-
-use std::sync::Arc;
+//! [`run_react_graph`](super::common::run_react_graph).
 
 use async_openai::config::OpenAIConfig;
-use langgraph::{
-    ActNode, ChatOpenAI, CompiledStateGraph, MockToolSource, ObserveNode, StateGraph, ThinkNode,
-    ToolSource, END, REACT_SYSTEM_PROMPT, START,
-};
-use langgraph::{Message, ReActState};
+use langgraph::{ChatOpenAI, MockToolSource, ToolSource};
 
 use crate::config::RunConfig;
-use crate::middleware::WithNodeLogging;
 
+use super::common::run_react_graph;
 use super::Error;
 
 /// Run ReAct graph with given config; does not read .env, returns final state.
-pub async fn run_with_config(config: &RunConfig, user_message: &str) -> Result<ReActState, Error> {
+pub async fn run_with_config(
+    config: &RunConfig,
+    user_message: &str,
+) -> Result<langgraph::ReActState, Error> {
     let openai_config = OpenAIConfig::new()
         .with_api_base(&config.api_base)
         .with_api_key(config.api_key.clone());
@@ -71,31 +68,14 @@ pub async fn run_with_config(config: &RunConfig, user_message: &str) -> Result<R
     if let Some(tc) = config.tool_choice {
         llm = llm.with_tool_choice(tc);
     }
-    let think = ThinkNode::new(Box::new(llm));
-    let act = ActNode::new(Box::new(tool_source));
-    let observe = ObserveNode::new();
-
-    let mut graph = StateGraph::<ReActState>::new();
-    graph
-        .add_node("think", Arc::new(think))
-        .add_node("act", Arc::new(act))
-        .add_node("observe", Arc::new(observe))
-        .add_edge(START, "think")
-        .add_edge("think", "act")
-        .add_edge("act", "observe")
-        .add_edge("observe", END);
-
-    let compiled: CompiledStateGraph<ReActState> = graph.with_node_logging().compile()?;
-
-    let state = ReActState {
-        messages: vec![
-            Message::system(REACT_SYSTEM_PROMPT),
-            Message::user(user_message.to_string()),
-        ],
-        tool_calls: vec![],
-        tool_results: vec![],
-    };
-
-    let final_state = compiled.invoke(state, None).await?;
-    Ok(final_state)
+    let llm: Box<dyn langgraph::LlmClient> = Box::new(llm);
+    run_react_graph(
+        user_message,
+        llm,
+        tool_source,
+        None,
+        None,
+        None,
+    )
+    .await
 }

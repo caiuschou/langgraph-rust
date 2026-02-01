@@ -4,3 +4,6 @@
 //! Each submodule documents the behaviour under test.
 
 mod config;
+mod main_binary;
+mod middleware;
+mod run;

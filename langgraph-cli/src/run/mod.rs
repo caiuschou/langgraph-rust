@@ -4,19 +4,25 @@
 
 pub use crate::config::Error;
 
-#[cfg(not(feature = "sqlite"))]
-mod run_with_config_no_sqlite;
+mod common;
+
 #[cfg(feature = "sqlite")]
 mod run_with_config_sqlite;
+#[cfg(not(feature = "sqlite"))]
+mod run_with_config_no_sqlite;
 
 use langgraph::ReActState;
 
 use crate::config::RunConfig;
 
-#[cfg(not(feature = "sqlite"))]
-pub use run_with_config_no_sqlite::run_with_config;
+/// Re-exported for tests that inject MockLlm/MockToolSource.
+#[cfg(test)]
+pub(crate) use common::run_react_graph;
+
 #[cfg(feature = "sqlite")]
 pub use run_with_config_sqlite::run_with_config;
+#[cfg(not(feature = "sqlite"))]
+pub use run_with_config_no_sqlite::run_with_config;
 
 /// Run ReAct graph with default config (from .env), returns final state.
 ///
