@@ -2,14 +2,33 @@
 //!
 //! Design: docs/rust-langgraph/mcp-integration/implementation.md.
 //! ReAct/Agent depends on `ToolSource` instead of a concrete tool registry;
-//! implementations include `MockToolSource` (tests) and `McpToolSource` (feature mcp).
+//! implementations include `MockToolSource` (tests), `StoreToolSource`, `ShortTermMemoryToolSource`, and `McpToolSource` (feature mcp).
+//!
+//! ## Memory tools (idea/memory-tools-design.md)
+//!
+//! - **StoreToolSource**: long-term memory as tools (`remember`, `recall`, `search_memories`, `list_memories`).
+//!   Use with `Arc<dyn Store>` and a fixed namespace; pass to `ActNode::new(Box::new(store_tools))`.
+//! - **ShortTermMemoryToolSource**: one optional tool `get_recent_messages` (current conversation).
+//!   Use only when you need to explicitly re-read or summarize last N messages; most flows can omit it.
+//!   ActNode passes `ToolCallContext` via `call_tool_with_context` so this tool receives `state.messages`.
+//! - **MemoryToolsSource**: composite of both. Use `MemoryToolsSource::new(store, namespace)` and pass to `ActNode::new(Box::new(memory_tools))` for one-line setup.
 
+mod context;
+mod memory_tools_source;
 mod mock;
+mod short_term_memory_tool_source;
+mod store_tool_source;
 
 #[cfg(feature = "mcp")]
 mod mcp;
 
+pub use context::ToolCallContext;
+pub use memory_tools_source::MemoryToolsSource;
 pub use mock::MockToolSource;
+pub use short_term_memory_tool_source::{ShortTermMemoryToolSource, TOOL_GET_RECENT_MESSAGES};
+pub use store_tool_source::{
+    StoreToolSource, TOOL_LIST_MEMORIES, TOOL_RECALL, TOOL_REMEMBER, TOOL_SEARCH_MEMORIES,
+};
 
 #[cfg(feature = "mcp")]
 pub use mcp::{McpSession, McpSessionError, McpToolSource};
@@ -64,10 +83,13 @@ pub enum ToolSourceError {
 ///
 /// ReAct/Agent depends on this instead of a concrete ToolRegistry. Think node
 /// uses `list_tools()` to build prompts; Act node uses `call_tool(name, args)`.
-/// Implementations: `MockToolSource` (tests), future `McpToolSource`.
+/// Implementations: `MockToolSource` (tests), `StoreToolSource`, `ShortTermMemoryToolSource`, `McpToolSource`.
 ///
-/// **Interaction**: Used by ThinkNode (list_tools) and ActNode (call_tool).
-/// See docs/rust-langgraph/mcp-integration/README.md §3.1 and docs/rust-langgraph/mcp-integration/implementation.md §1.1.
+/// **Call context**: Tools that need current-step state (e.g. recent messages) receive
+/// it via `set_call_context`; ActNode calls it before each round of tool execution.
+/// Default implementation is no-op. See `idea/memory-tools-design.md` §3.2.
+///
+/// **Interaction**: Used by ThinkNode (list_tools) and ActNode (call_tool, set_call_context).
 #[async_trait]
 pub trait ToolSource: Send + Sync {
     /// List available tools (e.g. MCP tools/list).
@@ -79,4 +101,24 @@ pub trait ToolSource: Send + Sync {
         name: &str,
         arguments: Value,
     ) -> Result<ToolCallContent, ToolSourceError>;
+
+    /// Call a tool with optional per-step context (e.g. current messages).
+    /// Default implementation ignores `ctx` and calls `call_tool(name, arguments)`.
+    /// Implementations that need context (e.g. ShortTermMemoryToolSource for get_recent_messages)
+    /// override and use `ctx.recent_messages`. ActNode calls this with `Some(&ToolCallContext)`
+    /// so context is explicit and no cross-call state is needed. See idea/memory-tools-design.md §7.2.
+    async fn call_tool_with_context(
+        &self,
+        name: &str,
+        arguments: Value,
+        ctx: Option<&ToolCallContext>,
+    ) -> Result<ToolCallContent, ToolSourceError> {
+        let _ = ctx;
+        self.call_tool(name, arguments).await
+    }
+
+    /// Injects per-step context before tool calls (e.g. current messages).
+    /// ActNode calls this before executing tool_calls; implementations that need
+    /// context (e.g. ShortTermMemoryToolSource) override; others use this default no-op.
+    fn set_call_context(&self, _ctx: Option<ToolCallContext>) {}
 }

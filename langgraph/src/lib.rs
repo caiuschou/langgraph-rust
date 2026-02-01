@@ -102,5 +102,9 @@ pub use react::{ActNode, ObserveNode, ThinkNode, REACT_SYSTEM_PROMPT};
 pub use state::{ReActState, ToolCall, ToolResult};
 #[cfg(feature = "mcp")]
 pub use tool_source::McpToolSource;
-pub use tool_source::{MockToolSource, ToolCallContent, ToolSource, ToolSourceError, ToolSpec};
+pub use tool_source::{
+    MemoryToolsSource, MockToolSource, ShortTermMemoryToolSource, StoreToolSource, ToolCallContent,
+    ToolCallContext, ToolSource, ToolSourceError, ToolSpec, TOOL_GET_RECENT_MESSAGES,
+    TOOL_LIST_MEMORIES, TOOL_RECALL, TOOL_REMEMBER, TOOL_SEARCH_MEMORIES,
+};
 pub use traits::Agent;
