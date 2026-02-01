@@ -2,10 +2,10 @@
 //!
 //! Uses the real OpenAI Chat Completions API. Requires `OPENAI_API_KEY` (or
 //! explicit config). Optional tools can be set for function/tool calling;
-//! when present, the API may return `tool_calls` in the response.
+//! when present, API may return `tool_calls` in the response.
 //!
 //! **Interaction**: Implements `LlmClient`; used by ThinkNode like `MockLlm`.
-//! Depends on `async_openai` (feature `zhipu`).
+//! Depends on `async_openai` (feature `openai`).
 
 use async_trait::async_trait;
 
@@ -19,9 +19,9 @@ use async_openai::{
     config::OpenAIConfig,
     types::chat::{
         ChatCompletionMessageToolCalls, ChatCompletionRequestMessage,
-        ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage,
-        ChatCompletionTool, ChatCompletionToolChoiceOption, ChatCompletionTools,
-        CreateChatCompletionRequestArgs, FunctionObject, ToolChoiceOptions,
+        ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage, ChatCompletionTool,
+        ChatCompletionToolChoiceOption, ChatCompletionTools, CreateChatCompletionRequestArgs,
+        FunctionObject, ToolChoiceOptions,
     },
     Client,
 };
@@ -89,17 +89,15 @@ impl ChatOpenAI {
         messages
             .iter()
             .map(|m| match m {
-                Message::System(s) => {
-                    ChatCompletionRequestMessage::System(ChatCompletionRequestSystemMessage::from(
-                        s.as_str(),
-                    ))
-                }
-                Message::User(s) => {
-                    ChatCompletionRequestMessage::User(ChatCompletionRequestUserMessage::from(s.as_str()))
-                }
-                Message::Assistant(s) => ChatCompletionRequestMessage::Assistant(
-                    (s.as_str()).into(),
+                Message::System(s) => ChatCompletionRequestMessage::System(
+                    ChatCompletionRequestSystemMessage::from(s.as_str()),
                 ),
+                Message::User(s) => ChatCompletionRequestMessage::User(
+                    ChatCompletionRequestUserMessage::from(s.as_str()),
+                ),
+                Message::Assistant(s) => {
+                    ChatCompletionRequestMessage::Assistant((s.as_str()).into())
+                }
             })
             .collect()
     }
@@ -147,15 +145,17 @@ impl LlmClient for ChatOpenAI {
             AgentError::ExecutionFailed(format!("OpenAI request build failed: {}", e))
         })?;
 
-        let response = self.client.chat().create(request).await.map_err(|e| {
-            AgentError::ExecutionFailed(format!("OpenAI API error: {}", e))
-        })?;
+        let response = self
+            .client
+            .chat()
+            .create(request)
+            .await
+            .map_err(|e| AgentError::ExecutionFailed(format!("OpenAI API error: {}", e)))?;
 
-        let choice = response
-            .choices
-            .into_iter()
-            .next()
-            .ok_or_else(|| AgentError::ExecutionFailed("OpenAI returned no choices".to_string()))?;
+        let choice =
+            response.choices.into_iter().next().ok_or_else(|| {
+                AgentError::ExecutionFailed("OpenAI returned no choices".to_string())
+            })?;
 
         let msg = choice.message;
         let content = msg.content.unwrap_or_default();
@@ -176,6 +176,9 @@ impl LlmClient for ChatOpenAI {
             })
             .collect();
 
-        Ok(LlmResponse { content, tool_calls })
+        Ok(LlmResponse {
+            content,
+            tool_calls,
+        })
     }
 }

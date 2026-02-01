@@ -10,7 +10,7 @@ pub type Namespace = Vec<String>;
 /// Error for store operations.
 ///
 /// Callers do not depend on underlying backend errors (e.g. rusqlite, lancedb).
-/// Use `?` with `serde_json::Error` via the `From` impl for serialization failures.
+/// Use `?` with `serde_json::Error` via `From` impl for serialization failures.
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
     /// JSON or namespace serialization/deserialization failed.
@@ -21,9 +21,13 @@ pub enum StoreError {
     #[error("storage: {0}")]
     Storage(String),
 
-    /// Key not found in the given namespace (optional; get may use `Ok(None)` instead).
+    /// Key not found in given namespace (optional; get may use `Ok(None)` instead).
     #[error("not found")]
     NotFound,
+
+    /// Embedding generation error (e.g. OpenAI API error).
+    #[error("embedding: {0}")]
+    EmbeddingError(String),
 }
 
 impl From<serde_json::Error> for StoreError {
@@ -39,7 +43,9 @@ mod tests {
     #[test]
     fn store_error_from_serde_json_error() {
         let invalid = "not valid json {{{";
-        let err: StoreError = serde_json::from_str::<serde_json::Value>(invalid).unwrap_err().into();
+        let err: StoreError = serde_json::from_str::<serde_json::Value>(invalid)
+            .unwrap_err()
+            .into();
         match &err {
             StoreError::Serialization(s) => assert!(s.contains("expected value") || s.len() > 0),
             _ => panic!("expected Serialization variant"),
