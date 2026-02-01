@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use std::pin::Pin;
 
-use langgraph::{AgentError, NodeMiddleware, Next, ReActState};
+use langgraph::{AgentError, Next, NodeMiddleware, ReActState};
 
 /// Middleware that logs node enter/exit around each node.run call.
 ///
@@ -17,8 +17,9 @@ impl NodeMiddleware<ReActState> for LoggingMiddleware {
         node_id: &str,
         state: ReActState,
         inner: Box<
-            dyn FnOnce(ReActState)
-                -> Pin<
+            dyn FnOnce(
+                    ReActState,
+                ) -> Pin<
                     Box<
                         dyn std::future::Future<Output = Result<(ReActState, Next), AgentError>>
                             + Send,
