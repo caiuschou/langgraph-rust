@@ -12,7 +12,7 @@ use crate::error::AgentError;
 use crate::graph::Next;
 use crate::Node;
 use crate::state::{ReActState, ToolResult};
-use crate::tool_source::ToolSource;
+use crate::tool_source::{ToolCallContext, ToolSource};
 
 /// Act node: one ReAct step that executes tool_calls and produces tool_results.
 ///
@@ -42,9 +42,15 @@ impl Node<ReActState> for ActNode {
         "act"
     }
 
-    /// Reads state.tool_calls, calls call_tool for each, writes tool_results.
-    /// Returns Next::Continue to follow linear edge order (e.g. act → observe).
+    /// Reads state.tool_calls, calls call_tool_with_context for each, writes tool_results.
+    /// Passes ToolCallContext (recent_messages) explicitly so tools like get_recent_messages
+    /// receive current conversation without internal state. Also calls set_call_context for
+    /// backward compatibility. Returns Next::Continue.
     async fn run(&self, state: ReActState) -> Result<(ReActState, Next), AgentError> {
+        let ctx = ToolCallContext {
+            recent_messages: state.messages.clone(),
+        };
+        self.tools.set_call_context(Some(ctx.clone()));
         let mut tool_results = Vec::with_capacity(state.tool_calls.len());
         for tc in &state.tool_calls {
             let args: Value = if tc.arguments.trim().is_empty() {
@@ -54,7 +60,7 @@ impl Node<ReActState> for ActNode {
             };
             let content = self
                 .tools
-                .call_tool(&tc.name, args)
+                .call_tool_with_context(&tc.name, args, Some(&ctx))
                 .await
                 .map_err(|e| AgentError::ExecutionFailed(e.to_string()))?;
             tool_results.push(ToolResult {
@@ -63,6 +69,7 @@ impl Node<ReActState> for ActNode {
                 content: content.text,
             });
         }
+        self.tools.set_call_context(None);
         let new_state = ReActState {
             messages: state.messages,
             tool_calls: state.tool_calls,

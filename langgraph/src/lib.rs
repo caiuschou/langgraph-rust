@@ -86,7 +86,11 @@ pub use llm::{ChatOpenAI, ChatZhipu};
 pub use message::Message;
 pub use state::{ReActState, ToolCall, ToolResult};
 pub use react::{ActNode, ObserveNode, ThinkNode, REACT_SYSTEM_PROMPT};
-pub use tool_source::{MockToolSource, ToolCallContent, ToolSource, ToolSourceError, ToolSpec};
+pub use tool_source::{
+    MemoryToolsSource, MockToolSource, ShortTermMemoryToolSource, StoreToolSource, ToolCallContent,
+    ToolCallContext, ToolSource, ToolSourceError, ToolSpec, TOOL_GET_RECENT_MESSAGES, TOOL_LIST_MEMORIES,
+    TOOL_RECALL, TOOL_REMEMBER, TOOL_SEARCH_MEMORIES,
+};
 #[cfg(feature = "mcp")]
 pub use tool_source::McpToolSource;
 pub use memory::{
