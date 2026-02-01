@@ -7,7 +7,7 @@ use std::env;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use langgraph::{Agent, AgentError, CompiledStateGraph, Message, StateGraph, START, END};
+use langgraph::{Agent, AgentError, CompiledStateGraph, Message, StateGraph, END, START};
 
 /// Example state: message list only (same as echo example).
 #[derive(Debug, Clone, Default)]
@@ -50,7 +50,9 @@ impl Agent for EchoAgent {
 
 #[tokio::main]
 async fn main() {
-    let input = env::args().nth(1).unwrap_or_else(|| "hello world".to_string());
+    let input = env::args()
+        .nth(1)
+        .unwrap_or_else(|| "hello world".to_string());
 
     let mut graph = StateGraph::<AgentState>::new();
     graph

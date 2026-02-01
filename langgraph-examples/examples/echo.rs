@@ -49,7 +49,9 @@ impl Agent for EchoAgent {
 
 #[tokio::main]
 async fn main() {
-    let input = env::args().nth(1).unwrap_or_else(|| "hello world".to_string());
+    let input = env::args()
+        .nth(1)
+        .unwrap_or_else(|| "hello world".to_string());
 
     let mut state = AgentState::default();
     state.messages.push(Message::User(input));

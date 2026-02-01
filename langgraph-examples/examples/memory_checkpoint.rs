@@ -7,7 +7,7 @@
 
 use async_trait::async_trait;
 use langgraph::{
-    Agent, AgentError, Checkpointer, Message, MemorySaver, RunnableConfig, StateGraph, START, END,
+    Agent, AgentError, Checkpointer, MemorySaver, Message, RunnableConfig, StateGraph, END, START,
 };
 use std::env;
 use std::sync::Arc;

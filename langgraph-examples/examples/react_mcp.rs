@@ -23,11 +23,11 @@
 
 use std::sync::Arc;
 
+use langgraph::state::ToolCall;
 use langgraph::{
     ActNode, CompiledStateGraph, Message, MockLlm, ObserveNode, ReActState, StateGraph, ThinkNode,
-    START, END,
+    END, START,
 };
-use langgraph::state::ToolCall;
 
 #[cfg(feature = "mcp")]
 use langgraph::McpToolSource;
@@ -50,8 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|_| "file:///tmp".to_string());
 
     let tool_source = {
-        let command = std::env::var("MCP_SERVER_COMMAND")
-            .unwrap_or_else(|_| "cargo".to_string());
+        let command = std::env::var("MCP_SERVER_COMMAND").unwrap_or_else(|_| "cargo".to_string());
         let args = std::env::var("MCP_SERVER_ARGS")
             .map(|s| s.split_whitespace().map(String::from).collect())
             .unwrap_or_else(|_| {
