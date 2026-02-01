@@ -51,7 +51,7 @@ pub struct ToolResult {
 ///
 /// **Interaction**: Consumed and produced by ThinkNode, ActNode, ObserveNode; passed
 /// through `StateGraph::invoke`. See docs/rust-langgraph/13-react-agent-design.md §2.1.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ReActState {
     /// Conversation history (System, User, Assistant). Used by Think and extended by Observe.
     pub messages: Vec<Message>,
