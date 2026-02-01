@@ -41,15 +41,22 @@ path = "examples/react_mcp_gitlab.rs"
 [[example]]
 name = "react_memory"
 path = "examples/react_memory.rs"
+required-features = ["embedding"]
+
+[[example]]
+name = "openai_embedding"
+path = "examples/openai_embedding.rs"
+required-features = ["embedding"]
 
 [features]
 default = ["openai", "mcp"]
 openai = []
 mcp = []
-embedding = []
+# LanceDB vector store for LanceStore (react_memory example). Disabled by default so `cargo test` does not pull in lancedb.
+embedding = ["langgraph/lance"]
 
 [dependencies]
-langgraph = { path = "../langgraph", features = ["openai", "sqlite", "lance"] }
+langgraph = { path = "../langgraph", features = ["openai", "sqlite"] }
 tokio = { workspace = true }
 async-trait = { workspace = true }
 dotenv = { workspace = true }
