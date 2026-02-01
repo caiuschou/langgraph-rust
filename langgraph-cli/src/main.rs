@@ -34,6 +34,18 @@ struct Args {
     /// SQLite database path for persistence
     #[arg(long, value_name = "PATH")]
     db_path: Option<String>,
+
+    /// Enable Exa MCP for web search
+    #[arg(long)]
+    mcp_exa: bool,
+
+    /// Exa API key (optional, for authenticated requests)
+    #[arg(long, value_name = "KEY")]
+    exa_api_key: Option<String>,
+
+    /// Exa MCP server URL
+    #[arg(long, value_name = "URL")]
+    mcp_exa_url: Option<String>,
 }
 
 fn get_message(args: &Args) -> String {
@@ -79,6 +91,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if args.db_path.is_some() {
         config.db_path = args.db_path;
+    }
+    if args.mcp_exa {
+        config.use_exa_mcp = true;
+    }
+    if let Some(key) = args.exa_api_key {
+        config.exa_api_key = Some(key);
+    }
+    if let Some(url) = args.mcp_exa_url {
+        config.mcp_exa_url = url;
     }
 
     println!("User: {}", input);

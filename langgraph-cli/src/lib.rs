@@ -209,6 +209,16 @@ pub struct RunConfig {
     pub user_id: Option<String>,
     /// SQLite database path for persistence. Defaults to "memory.db".
     pub db_path: Option<String>,
+    /// Use Exa MCP for web search. Enables Exa's remote MCP server.
+    pub use_exa_mcp: bool,
+    /// Exa API key for MCP authentication.
+    pub exa_api_key: Option<String>,
+    /// Exa MCP server URL. Default: `https://mcp.exa.ai/mcp`.
+    pub mcp_exa_url: String,
+    /// Command for mcp-remote (stdio→HTTP bridge). Default: `npx`.
+    pub mcp_remote_cmd: String,
+    /// Args for mcp-remote, e.g. `-y mcp-remote`. Default: `-y mcp-remote`.
+    pub mcp_remote_args: String,
 }
 
 impl RunConfig {
@@ -257,6 +267,7 @@ impl RunConfig {
     /// `OPENAI_TEMPERATURE`, `OPENAI_TOOL_CHOICE` (auto|none|required) optional.
     /// For embeddings: `EMBEDDING_API_KEY`, `EMBEDDING_API_BASE`, `EMBEDDING_MODEL` optional.
     /// For memory: `THREAD_ID`, `USER_ID`, `DB_PATH` optional.
+    /// For Exa MCP: `USE_EXA_MCP`, `EXA_API_KEY`, `MCP_EXA_URL`, `MCP_REMOTE_CMD`, `MCP_REMOTE_ARGS` optional.
     pub fn from_env() -> Result<Self, Error> {
         let api_key = std::env::var("OPENAI_API_KEY").map_err(|_| {
             std::io::Error::new(
@@ -281,6 +292,17 @@ impl RunConfig {
         let thread_id = std::env::var("THREAD_ID").ok();
         let user_id = std::env::var("USER_ID").ok();
         let db_path = std::env::var("DB_PATH").ok();
+        let exa_api_key = std::env::var("EXA_API_KEY").ok();
+        let use_exa_mcp = std::env::var("USE_EXA_MCP")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or_else(|| exa_api_key.is_some());
+        let mcp_exa_url = std::env::var("MCP_EXA_URL")
+            .unwrap_or_else(|_| "https://mcp.exa.ai/mcp".to_string());
+        let mcp_remote_cmd = std::env::var("MCP_REMOTE_CMD")
+            .unwrap_or_else(|_| "npx".to_string());
+        let mcp_remote_args = std::env::var("MCP_REMOTE_ARGS")
+            .unwrap_or_else(|_| "-y mcp-remote".to_string());
         Ok(Self {
             api_base,
             api_key,
@@ -293,6 +315,11 @@ impl RunConfig {
             thread_id,
             user_id,
             db_path,
+            use_exa_mcp,
+            exa_api_key,
+            mcp_exa_url,
+            mcp_remote_cmd,
+            mcp_remote_args,
         })
     }
 }
@@ -328,7 +355,33 @@ pub async fn run_with_config(config: &RunConfig, user_message: &str) -> Result<R
         None
     };
 
-    let tool_source: Box<dyn ToolSource> = if let Some(user_id) = &config.user_id {
+    let tool_source: Box<dyn ToolSource> = if config.use_exa_mcp {
+        #[cfg(feature = "mcp")]
+        {
+            let args: Vec<String> = config.mcp_remote_args.split_whitespace().map(String::from).collect();
+            let mut args = args;
+            if !args.iter().any(|a| a == &config.mcp_exa_url || a.contains("mcp.exa.ai")) {
+                args.push(config.mcp_exa_url.clone());
+            }
+            if let Some(ref key) = config.exa_api_key {
+                let mut env = vec![("EXA_API_KEY".to_string(), key.clone())];
+                if let Ok(home) = std::env::var("HOME") {
+                    env.push(("HOME".to_string(), home));
+                }
+                Box::new(langgraph::McpToolSource::new_with_env(
+                    config.mcp_remote_cmd.clone(),
+                    args,
+                    env,
+                )?)
+            } else {
+                Box::new(langgraph::McpToolSource::new(config.mcp_remote_cmd.clone(), args)?)
+            }
+        }
+        #[cfg(not(feature = "mcp"))]
+        {
+            return Err("MCP feature is not enabled. Build with --features mcp".into());
+        }
+    } else if let Some(user_id) = &config.user_id {
         if let Some(s) = &store {
             let namespace = vec![user_id.clone(), "memories".to_string()];
             Box::new(MemoryToolSource::new(s.clone(), namespace))
@@ -403,7 +456,36 @@ pub async fn run_with_config(config: &RunConfig, user_message: &str) -> Result<R
         .with_api_base(&config.api_base)
         .with_api_key(config.api_key.clone());
 
-    let tool_source = MockToolSource::get_time_example();
+    let tool_source: Box<dyn ToolSource> = if config.use_exa_mcp {
+        #[cfg(feature = "mcp")]
+        {
+            let args: Vec<String> = config.mcp_remote_args.split_whitespace().map(String::from).collect();
+            let mut args = args;
+            if !args.iter().any(|a| a == &config.mcp_exa_url || a.contains("mcp.exa.ai")) {
+                args.push(config.mcp_exa_url.clone());
+            }
+            if let Some(ref key) = config.exa_api_key {
+                let mut env = vec![("EXA_API_KEY".to_string(), key.clone())];
+                if let Ok(home) = std::env::var("HOME") {
+                    env.push(("HOME".to_string(), home));
+                }
+                Box::new(langgraph::McpToolSource::new_with_env(
+                    config.mcp_remote_cmd.clone(),
+                    args,
+                    env,
+                )?)
+            } else {
+                Box::new(langgraph::McpToolSource::new(config.mcp_remote_cmd.clone(), args)?)
+            }
+        }
+        #[cfg(not(feature = "mcp"))]
+        {
+            return Err("MCP feature is not enabled. Build with --features mcp".into());
+        }
+    } else {
+        Box::new(MockToolSource::get_time_example())
+    };
+
     let tools = tool_source.list_tools().await?;
     let mut llm = ChatOpenAI::with_config(openai_config, config.model.clone()).with_tools(tools);
     if let Some(t) = config.temperature {
