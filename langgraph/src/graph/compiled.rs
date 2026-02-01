@@ -43,11 +43,7 @@ where
     /// - `Next::Continue`: run the next node in edge_order, or end if last.
     /// - `Next::Node(id)`: run the node with that id next.
     /// - `Next::End`: stop and return current state.
-    pub async fn invoke(
-        &self,
-        state: S,
-        config: Option<RunnableConfig>,
-    ) -> Result<S, AgentError> {
+    pub async fn invoke(&self, state: S, config: Option<RunnableConfig>) -> Result<S, AgentError> {
         let mut state = state;
         let mut current_id = self
             .edge_order
@@ -63,9 +59,11 @@ where
                 .clone();
             let (new_state, next) = if let Some(m) = &self.middleware {
                 let node_id = current_id.clone();
-                m.around_run(&node_id, state, Box::new(move |s| {
-                    Box::pin(async move { node.run(s).await })
-                }))
+                m.around_run(
+                    &node_id,
+                    state,
+                    Box::new(move |s| Box::pin(async move { node.run(s).await })),
+                )
                 .await?
             } else {
                 node.run(state).await?

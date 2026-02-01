@@ -94,11 +94,7 @@ where
     /// Use `START` for graph entry and `END` for graph exit. Both ids (except
     /// START/END) must be registered via `add_node` before `compile()`.
     /// Edges must form a single linear chain: one edge from START, one edge to END.
-    pub fn add_edge(
-        &mut self,
-        from_id: impl Into<String>,
-        to_id: impl Into<String>,
-    ) -> &mut Self {
+    pub fn add_edge(&mut self, from_id: impl Into<String>, to_id: impl Into<String>) -> &mut Self {
         self.edges.push((from_id.into(), to_id.into()));
         self
     }

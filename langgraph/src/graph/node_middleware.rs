@@ -27,6 +27,12 @@ where
         &self,
         node_id: &str,
         state: S,
-        inner: Box<dyn FnOnce(S) -> Pin<Box<dyn std::future::Future<Output = Result<(S, Next), AgentError>> + Send>> + Send>,
+        inner: Box<
+            dyn FnOnce(
+                    S,
+                ) -> Pin<
+                    Box<dyn std::future::Future<Output = Result<(S, Next), AgentError>> + Send>,
+                > + Send,
+        >,
     ) -> Result<(S, Next), AgentError>;
 }

@@ -17,4 +17,4 @@ pub use name_node::NameNode;
 pub use next::Next;
 pub use node::Node;
 pub use node_middleware::NodeMiddleware;
-pub use state_graph::{StateGraph, START, END};
+pub use state_graph::{StateGraph, END, START};

@@ -24,9 +24,7 @@ pub struct NameNode {
 impl NameNode {
     /// Creates a name node with the given id (returned by `Node::id`).
     pub fn new(name: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-        }
+        Self { name: name.into() }
     }
 }
 
