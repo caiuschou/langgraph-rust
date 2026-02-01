@@ -9,8 +9,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::error::AgentError;
-use crate::graph::Next;
-use crate::Node;
+use crate::graph::{Next, Node};
 use crate::state::{ReActState, ToolResult};
 use crate::tool_source::{ToolCallContext, ToolSource};
 

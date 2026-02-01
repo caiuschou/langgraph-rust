@@ -5,12 +5,12 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use arrow_array::{Float32Array, RecordBatch, RecordBatchIterator, StringArray};
 use arrow_array::types::Float32Type;
 use arrow_array::FixedSizeListArray;
+use arrow_array::{Array, Float32Array, RecordBatch, RecordBatchIterator, StringArray};
 use arrow_schema::{DataType, Field, Schema};
 use async_trait::async_trait;
-use futures::{StreamExt, TryStreamExt};
+use futures::TryStreamExt;
 use lancedb::connection::Connection;
 use lancedb::query::ExecutableQuery;
 use lancedb::query::QueryBase;
@@ -67,11 +67,7 @@ impl LanceStore {
         let dimension = embedder.dimension();
         let table_name = TABLE_NAME.to_string();
 
-        let has_table = conn
-            .open_table(TABLE_NAME)
-            .execute()
-            .await
-            .is_ok();
+        let has_table = conn.open_table(TABLE_NAME).execute().await.is_ok();
 
         if !has_table {
             let schema = Arc::new(Schema::new(vec![
@@ -163,25 +159,18 @@ impl Store for LanceStore {
                 Arc::new(StringArray::from(vec![ns.as_str()])),
                 Arc::new(StringArray::from(vec![key.as_str()])),
                 Arc::new(StringArray::from(vec![value_str.as_str()])),
-                Arc::new(FixedSizeListArray::from_iter_primitive::<
-                    Float32Type,
-                    _,
-                    _,
-                >(
-                    std::iter::once(Some(
-                        vector.into_iter().map(Some).collect::<Vec<_>>(),
-                    )),
-                    self.dimension as i32,
-                )),
+                Arc::new(
+                    FixedSizeListArray::from_iter_primitive::<Float32Type, _, _>(
+                        std::iter::once(Some(vector.into_iter().map(Some).collect::<Vec<_>>())),
+                        self.dimension as i32,
+                    ),
+                ),
             ],
         )
         .map_err(|e| StoreError::Storage(e.to_string()))?;
-        
-        let batch_iter = RecordBatchIterator::new(
-            vec![Ok(batch)].into_iter(),
-            schema,
-        );
-        
+
+        let batch_iter = RecordBatchIterator::new(vec![Ok(batch)].into_iter(), schema);
+
         table
             .add(batch_iter)
             .execute()
@@ -200,7 +189,7 @@ impl Store for LanceStore {
         let pred_key = escape_sql(key);
         let predicate = format!("ns = '{}' AND key = '{}'", pred_ns, pred_key);
         let table = self.open_table().await?;
-        let mut stream = table
+        let stream = table
             .query()
             .only_if(predicate)
             .limit(1)
@@ -232,7 +221,7 @@ impl Store for LanceStore {
         let pred_ns = escape_sql(&ns);
         let predicate = format!("ns = '{}'", pred_ns);
         let table = self.open_table().await?;
-        let mut stream = table
+        let stream = table
             .query()
             .only_if(predicate)
             .execute()
@@ -284,7 +273,7 @@ impl Store for LanceStore {
                         self.dimension
                     )));
                 }
-                let mut stream = table
+                let stream = table
                     .query()
                     .nearest_to(query_vec.as_slice())
                     .map_err(|e| StoreError::Storage(e.to_string()))?
@@ -316,25 +305,21 @@ impl Store for LanceStore {
                     let score_col = batch.column_by_name("_distance");
                     for i in 0..batch.num_rows() {
                         let key = key_arr.value(i).to_string();
-                        let value = serde_json::from_str(value_arr.value(i))
-                            .map_err(StoreError::from)?;
+                        let value =
+                            serde_json::from_str(value_arr.value(i)).map_err(StoreError::from)?;
                         let score = score_col.and_then(|col| {
                             col.as_any()
                                 .downcast_ref::<Float32Array>()
                                 .map(|arr| arr.value(i) as f64)
                         });
-                        hits.push(StoreSearchHit {
-                            key,
-                            value,
-                            score,
-                        });
+                        hits.push(StoreSearchHit { key, value, score });
                     }
                 }
                 return Ok(hits);
             }
         }
 
-        let mut stream = table
+        let stream = table
             .query()
             .only_if(predicate)
             .limit(limit)
@@ -363,8 +348,7 @@ impl Store for LanceStore {
                 .ok_or_else(|| StoreError::Storage("value column not string".into()))?;
             for i in 0..batch.num_rows() {
                 let key = key_arr.value(i).to_string();
-                let value =
-                    serde_json::from_str(value_arr.value(i)).map_err(StoreError::from)?;
+                let value = serde_json::from_str(value_arr.value(i)).map_err(StoreError::from)?;
                 hits.push(StoreSearchHit {
                     key,
                     value,

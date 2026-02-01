@@ -1,8 +1,8 @@
 //! Integration tests for SqliteSaver and SqliteStore. Run with: cargo test -p langgraph --features sqlite --test memory_sqlite
 
 use langgraph::memory::{
-    Checkpoint, CheckpointMetadata, CheckpointSource, Checkpointer, JsonSerializer,
-    RunnableConfig, SqliteSaver, SqliteStore, Store,
+    Checkpoint, CheckpointMetadata, CheckpointSource, Checkpointer, JsonSerializer, RunnableConfig,
+    SqliteSaver, SqliteStore, Store,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

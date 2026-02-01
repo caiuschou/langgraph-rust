@@ -1,11 +1,13 @@
 //! StateGraph example: linear chain with EchoAgent.
 //!
 //! Single-node chain START → echo → END. Same behavior as the echo example
-//! but via StateGraph. Run: `cargo run -p langgraph-examples --example state_graph_echo -- "你好"`
+//! but via StateGraph. Run: `cargo run -p langgraph-examples --example state_graph_echo -- "Hello"`
+
+use std::env;
+use std::sync::Arc;
 
 use async_trait::async_trait;
-use langgraph::{Agent, AgentError, CompiledStateGraph, Message, StateGraph};
-use std::env;
+use langgraph::{Agent, AgentError, CompiledStateGraph, Message, StateGraph, END, START};
 
 /// Example state: message list only (same as echo example).
 #[derive(Debug, Clone, Default)]
@@ -48,12 +50,15 @@ impl Agent for EchoAgent {
 
 #[tokio::main]
 async fn main() {
-    let input = env::args().nth(1).unwrap_or_else(|| "hello world".to_string());
+    let input = env::args()
+        .nth(1)
+        .unwrap_or_else(|| "hello world".to_string());
 
     let mut graph = StateGraph::<AgentState>::new();
     graph
-        .add_node("echo", Box::new(EchoAgent::new()))
-        .add_edge("echo");
+        .add_node("echo", Arc::new(EchoAgent::new()))
+        .add_edge(START, "echo")
+        .add_edge("echo", END);
 
     let compiled: CompiledStateGraph<AgentState> = graph.compile().expect("valid graph");
 

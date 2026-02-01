@@ -2,10 +2,10 @@
 //!
 //! Uses the real OpenAI Chat Completions API. Requires `OPENAI_API_KEY` (or
 //! explicit config). Optional tools can be set for function/tool calling;
-//! when present, the API may return `tool_calls` in the response.
+//! when present, API may return `tool_calls` in the response.
 //!
 //! **Interaction**: Implements `LlmClient`; used by ThinkNode like `MockLlm`.
-//! Depends on `async_openai` (feature `zhipu`).
+//! Depends on `async_openai` (feature `openai`).
 
 use async_trait::async_trait;
 
@@ -19,12 +19,14 @@ use async_openai::{
     config::OpenAIConfig,
     types::chat::{
         ChatCompletionMessageToolCalls, ChatCompletionRequestMessage,
-        ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage,
-        ChatCompletionTool, ChatCompletionTools, CreateChatCompletionRequestArgs,
-        FunctionObject,
+        ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage, ChatCompletionTool,
+        ChatCompletionToolChoiceOption, ChatCompletionTools, CreateChatCompletionRequestArgs,
+        FunctionObject, ToolChoiceOptions,
     },
     Client,
 };
+
+use super::ToolChoiceMode;
 
 /// OpenAI Chat Completions client implementing `LlmClient` (aligns with LangChain ChatOpenAI).
 ///
@@ -37,6 +39,8 @@ pub struct ChatOpenAI {
     client: Client<OpenAIConfig>,
     model: String,
     tools: Option<Vec<ToolSpec>>,
+    temperature: Option<f32>,
+    tool_choice: Option<ToolChoiceMode>,
 }
 
 impl ChatOpenAI {
@@ -46,6 +50,8 @@ impl ChatOpenAI {
             client: Client::new(),
             model: model.into(),
             tools: None,
+            temperature: None,
+            tool_choice: None,
         }
     }
 
@@ -55,6 +61,8 @@ impl ChatOpenAI {
             client: Client::with_config(config),
             model: model.into(),
             tools: None,
+            temperature: None,
+            tool_choice: None,
         }
     }
 
@@ -64,22 +72,32 @@ impl ChatOpenAI {
         self
     }
 
+    /// Set temperature (0–2). Lower values are more deterministic.
+    pub fn with_temperature(mut self, temperature: f32) -> Self {
+        self.temperature = Some(temperature);
+        self
+    }
+
+    /// Set tool choice mode (auto, none, required). Overrides API default when tools are present.
+    pub fn with_tool_choice(mut self, mode: ToolChoiceMode) -> Self {
+        self.tool_choice = Some(mode);
+        self
+    }
+
     /// Convert our `Message` list to OpenAI request messages (system/user/assistant text only).
     fn messages_to_request(messages: &[Message]) -> Vec<ChatCompletionRequestMessage> {
         messages
             .iter()
             .map(|m| match m {
-                Message::System(s) => {
-                    ChatCompletionRequestMessage::System(ChatCompletionRequestSystemMessage::from(
-                        s.as_str(),
-                    ))
-                }
-                Message::User(s) => {
-                    ChatCompletionRequestMessage::User(ChatCompletionRequestUserMessage::from(s.as_str()))
-                }
-                Message::Assistant(s) => ChatCompletionRequestMessage::Assistant(
-                    (s.as_str()).into(),
+                Message::System(s) => ChatCompletionRequestMessage::System(
+                    ChatCompletionRequestSystemMessage::from(s.as_str()),
                 ),
+                Message::User(s) => ChatCompletionRequestMessage::User(
+                    ChatCompletionRequestUserMessage::from(s.as_str()),
+                ),
+                Message::Assistant(s) => {
+                    ChatCompletionRequestMessage::Assistant((s.as_str()).into())
+                }
             })
             .collect()
     }
@@ -110,19 +128,34 @@ impl LlmClient for ChatOpenAI {
             args.tools(chat_tools);
         }
 
+        if let Some(t) = self.temperature {
+            args.temperature(t);
+        }
+
+        if let Some(mode) = self.tool_choice {
+            let opt = match mode {
+                ToolChoiceMode::Auto => ToolChoiceOptions::Auto,
+                ToolChoiceMode::None => ToolChoiceOptions::None,
+                ToolChoiceMode::Required => ToolChoiceOptions::Required,
+            };
+            args.tool_choice(ChatCompletionToolChoiceOption::Mode(opt));
+        }
+
         let request = args.build().map_err(|e| {
             AgentError::ExecutionFailed(format!("OpenAI request build failed: {}", e))
         })?;
 
-        let response = self.client.chat().create(request).await.map_err(|e| {
-            AgentError::ExecutionFailed(format!("OpenAI API error: {}", e))
-        })?;
+        let response = self
+            .client
+            .chat()
+            .create(request)
+            .await
+            .map_err(|e| AgentError::ExecutionFailed(format!("OpenAI API error: {}", e)))?;
 
-        let choice = response
-            .choices
-            .into_iter()
-            .next()
-            .ok_or_else(|| AgentError::ExecutionFailed("OpenAI returned no choices".to_string()))?;
+        let choice =
+            response.choices.into_iter().next().ok_or_else(|| {
+                AgentError::ExecutionFailed("OpenAI returned no choices".to_string())
+            })?;
 
         let msg = choice.message;
         let content = msg.content.unwrap_or_default();
@@ -143,6 +176,9 @@ impl LlmClient for ChatOpenAI {
             })
             .collect();
 
-        Ok(LlmResponse { content, tool_calls })
+        Ok(LlmResponse {
+            content,
+            tool_calls,
+        })
     }
 }

@@ -11,8 +11,7 @@ use langgraph::tool_source::McpSession;
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "spawns mcp-filesystem-server; run with --ignored"]
 async fn mcp_session_list_and_call_tool() {
-    let command = std::env::var("MCP_SERVER_COMMAND")
-        .unwrap_or_else(|_| "cargo".to_string());
+    let command = std::env::var("MCP_SERVER_COMMAND").unwrap_or_else(|_| "cargo".to_string());
     let args = std::env::var("MCP_SERVER_ARGS")
         .map(|s| s.split_whitespace().map(String::from).collect())
         .unwrap_or_else(|_| {
@@ -24,7 +23,8 @@ async fn mcp_session_list_and_call_tool() {
             ]
         });
 
-    let mut session = McpSession::new(command, args, None::<Vec<(String, String)>>).expect("McpSession::new");
+    let mut session =
+        McpSession::new(command, args, None::<Vec<(String, String)>>).expect("McpSession::new");
 
     session
         .send_request("test-tools-list", "tools/list", serde_json::json!({}))
@@ -35,7 +35,11 @@ async fn mcp_session_list_and_call_tool() {
         .expect("wait_for_result")
         .expect("got result");
 
-    assert!(result.error.is_none(), "tools/list error: {:?}", result.error);
+    assert!(
+        result.error.is_none(),
+        "tools/list error: {:?}",
+        result.error
+    );
     let tools = result
         .result
         .as_ref()

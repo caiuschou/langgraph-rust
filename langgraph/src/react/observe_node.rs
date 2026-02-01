@@ -9,9 +9,9 @@ use async_trait::async_trait;
 
 use crate::error::AgentError;
 use crate::graph::Next;
-use crate::Node;
 use crate::message::Message;
 use crate::state::ReActState;
+use crate::Node;
 
 /// Observe node: one ReAct step that merges tool results into state and clears tool_*.
 ///

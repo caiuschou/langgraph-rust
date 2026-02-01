@@ -2,7 +2,7 @@
 //!
 //! EchoAgent and AgentState are implemented here as examples of using the minimal
 //! Agent trait; they are not part of the framework.
-//! Run: `cargo run -p langgraph-examples --example echo -- "你好"`
+//! Run: `cargo run -p langgraph-examples --example echo -- "Hello"`
 
 use async_trait::async_trait;
 use langgraph::{Agent, AgentError, Message};
@@ -49,7 +49,9 @@ impl Agent for EchoAgent {
 
 #[tokio::main]
 async fn main() {
-    let input = env::args().nth(1).unwrap_or_else(|| "hello world".to_string());
+    let input = env::args()
+        .nth(1)
+        .unwrap_or_else(|| "hello world".to_string());
 
     let mut state = AgentState::default();
     state.messages.push(Message::User(input));

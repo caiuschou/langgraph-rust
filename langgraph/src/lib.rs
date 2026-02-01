@@ -17,7 +17,7 @@
 //!
 //! - [`graph`]: `StateGraph`, `CompiledStateGraph`, `Node`, `Next` — build and run state graphs.
 //! - [`react`]: ReAct-style nodes (`ThinkNode`, `ActNode`, `ObserveNode`) for reasoning + tool use.
-//! - [`llm`]: `LlmClient` trait, `MockLlm`, and optional `ChatZhipu` / `ChatOpenAI` via features.
+//! - [`llm`]: `LlmClient` trait, `MockLlm`, and optional `ChatOpenAI` via features.
 //! - [`memory`]: Checkpointing, stores, and optional SQLite/LanceDB persistence.
 //! - [`tool_source`]: Tool specs and execution; optional MCP integration.
 //! - [`traits`]: Core `Agent` trait — implement for custom agents.
@@ -26,7 +26,7 @@
 //!
 //! - `mcp` (default): MCP tool source for external tools.
 //! - `sqlite` (default): Persistent checkpointer and store.
-//! - `zhipu`: OpenAI-compatible chat (e.g. GLM) via `async-openai`.
+//! - `openai`: OpenAI-compatible chat (e.g., OpenAI) via `async-openai`.
 //! - `lance`: LanceDB vector store for long-term memory.
 //!
 //! ## Quick Start
@@ -71,28 +71,23 @@
 pub mod error;
 pub mod graph;
 pub mod llm;
-pub mod message;
 pub mod memory;
+pub mod message;
 pub mod react;
 pub mod state;
 pub mod tool_source;
 pub mod traits;
 
 pub use error::AgentError;
-pub use graph::{CompilationError, CompiledStateGraph, Next, Node, StateGraph};
-pub use llm::{LlmClient, LlmResponse, MockLlm};
-#[cfg(feature = "zhipu")]
-pub use llm::{ChatOpenAI, ChatZhipu};
-pub use message::Message;
-pub use state::{ReActState, ToolCall, ToolResult};
-pub use react::{ActNode, ObserveNode, ThinkNode, REACT_SYSTEM_PROMPT};
-pub use tool_source::{
-    MemoryToolsSource, MockToolSource, ShortTermMemoryToolSource, StoreToolSource, ToolCallContent,
-    ToolCallContext, ToolSource, ToolSourceError, ToolSpec, TOOL_GET_RECENT_MESSAGES, TOOL_LIST_MEMORIES,
-    TOOL_RECALL, TOOL_REMEMBER, TOOL_SEARCH_MEMORIES,
+pub use graph::{
+    CompilationError, CompiledStateGraph, NameNode, Next, Node, NodeMiddleware, StateGraph, END,
+    START,
 };
-#[cfg(feature = "mcp")]
-pub use tool_source::McpToolSource;
+#[cfg(feature = "openai")]
+pub use llm::ChatOpenAI;
+pub use llm::{LlmClient, LlmResponse, MockLlm, ToolChoiceMode};
+#[cfg(all(feature = "lance", feature = "openai"))]
+pub use memory::OpenAIEmbedder;
 pub use memory::{
     Checkpoint, CheckpointError, CheckpointListItem, CheckpointMetadata, CheckpointSource,
     Checkpointer, InMemoryStore, JsonSerializer, MemorySaver, Namespace, RunnableConfig, Store,
@@ -102,4 +97,14 @@ pub use memory::{
 pub use memory::{Embedder, LanceStore};
 #[cfg(feature = "sqlite")]
 pub use memory::{SqliteSaver, SqliteStore};
+pub use message::Message;
+pub use react::{ActNode, ObserveNode, ThinkNode, REACT_SYSTEM_PROMPT};
+pub use state::{ReActState, ToolCall, ToolResult};
+#[cfg(feature = "mcp")]
+pub use tool_source::McpToolSource;
+pub use tool_source::{
+    MemoryToolsSource, MockToolSource, ShortTermMemoryToolSource, StoreToolSource, ToolCallContent,
+    ToolCallContext, ToolSource, ToolSourceError, ToolSpec, TOOL_GET_RECENT_MESSAGES,
+    TOOL_LIST_MEMORIES, TOOL_RECALL, TOOL_REMEMBER, TOOL_SEARCH_MEMORIES,
+};
 pub use traits::Agent;

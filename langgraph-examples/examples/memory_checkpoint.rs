@@ -7,7 +7,7 @@
 
 use async_trait::async_trait;
 use langgraph::{
-    Agent, AgentError, Checkpointer, Message, MemorySaver, RunnableConfig, StateGraph,
+    Agent, AgentError, Checkpointer, MemorySaver, Message, RunnableConfig, StateGraph, END, START,
 };
 use std::env;
 use std::sync::Arc;
@@ -55,8 +55,9 @@ async fn main() {
 
     let mut graph = StateGraph::<AgentState>::new();
     graph
-        .add_node("echo", Box::new(EchoAgent))
-        .add_edge("echo");
+        .add_node("echo", Arc::new(EchoAgent))
+        .add_edge(START, "echo")
+        .add_edge("echo", END);
 
     let compiled = graph
         .compile_with_checkpointer(checkpointer.clone())

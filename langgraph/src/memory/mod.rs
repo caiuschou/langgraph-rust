@@ -46,6 +46,8 @@ mod config;
 mod embedder;
 mod in_memory_store;
 mod memory_saver;
+#[cfg(all(feature = "lance", feature = "openai"))]
+mod openai_embedder;
 mod serializer;
 mod store;
 
@@ -68,6 +70,8 @@ pub use store::{Namespace, Store, StoreError, StoreSearchHit};
 pub use embedder::Embedder;
 #[cfg(feature = "lance")]
 pub use lance_store::LanceStore;
+#[cfg(all(feature = "lance", feature = "openai"))]
+pub use openai_embedder::OpenAIEmbedder;
 #[cfg(feature = "sqlite")]
 pub use sqlite_saver::SqliteSaver;
 #[cfg(feature = "sqlite")]

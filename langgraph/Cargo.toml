@@ -12,8 +12,8 @@ path = "src/lib.rs"
 [features]
 default = ["mcp", "sqlite"]
 mcp = ["dep:mcp_client", "dep:mcp_core"]
-# 智谱 GLM（async-openai 兼容 API）
-zhipu = ["dep:async-openai", "dep:dotenv"]
+# OpenAI-compatible API via async-openai
+openai = ["dep:async-openai", "dep:dotenv"]
 # Persistent checkpoint/store via SQLite (16-memory-design §3.6, §5.2.2)
 sqlite = ["dep:rusqlite"]
 # Persistent store with vector search via LanceDB (16-memory-design §5.2.1, long-term-memory-store P4)
@@ -26,9 +26,9 @@ thiserror = { workspace = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
-# Optional: OpenAI-compatible API for LlmClient (enable with feature "zhipu"; used by ChatZhipu/ChatOpenAI).
-async-openai = { version = "0.32", optional = true, features = ["chat-completion"] }
-# Optional: load .env for examples (enable with feature "zhipu").
+# Optional: OpenAI-compatible API for LlmClient (enable with feature "openai"; used by ChatOpenAI).
+async-openai = { version = "0.32", optional = true, features = ["chat-completion", "embedding"] }
+# Optional: load .env for examples (enable with feature "openai").
 dotenv = { workspace = true, optional = true }
 # Optional: MCP client for ToolSource (enable with feature "mcp").
 # MCP: https://github.com/caiuschou/mcp-rust

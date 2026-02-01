@@ -25,10 +25,13 @@
 //!
 //! Use `.env` in workspace root (gitignored) or export before running.
 
+use std::sync::Arc;
+
+use langgraph::state::ToolCall;
 use langgraph::{
     ActNode, CompiledStateGraph, Message, MockLlm, ObserveNode, ReActState, StateGraph, ThinkNode,
+    END, START,
 };
-use langgraph::state::ToolCall;
 
 #[cfg(feature = "mcp")]
 use langgraph::McpToolSource;
@@ -46,9 +49,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nth(1)
         .unwrap_or_else(|| "List my GitLab projects.".to_string());
 
-    let token = std::env::var("GITLAB_TOKEN").map_err(|_| {
-        "GITLAB_TOKEN is required. Set it via environment or .env (do NOT commit)."
-    })?;
+    let token = std::env::var("GITLAB_TOKEN")
+        .map_err(|_| "GITLAB_TOKEN is required. Set it via environment or .env (do NOT commit).")?;
 
     let mut env: Vec<(String, String)> = vec![("GITLAB_TOKEN".to_string(), token)];
     if let Ok(url) = std::env::var("GITLAB_URL") {
@@ -58,8 +60,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         env.push(("HOME".to_string(), home));
     }
 
-    let command = std::env::var("MCP_SERVER_COMMAND")
-        .unwrap_or_else(|_| "gitlab-mcp-server".to_string());
+    let command =
+        std::env::var("MCP_SERVER_COMMAND").unwrap_or_else(|_| "gitlab-mcp-server".to_string());
     let args = std::env::var("MCP_SERVER_ARGS")
         .map(|s| s.split_whitespace().map(String::from).collect())
         .unwrap_or_default();
@@ -77,12 +79,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut graph = StateGraph::<ReActState>::new();
     graph
-        .add_node("think", Box::new(ThinkNode::new(Box::new(mock_llm))))
-        .add_node("act", Box::new(ActNode::new(Box::new(tool_source))))
-        .add_node("observe", Box::new(ObserveNode::new()))
-        .add_edge("think")
-        .add_edge("act")
-        .add_edge("observe");
+        .add_node("think", Arc::new(ThinkNode::new(Box::new(mock_llm))))
+        .add_node("act", Arc::new(ActNode::new(Box::new(tool_source))))
+        .add_node("observe", Arc::new(ObserveNode::new()))
+        .add_edge(START, "think")
+        .add_edge("think", "act")
+        .add_edge("act", "observe")
+        .add_edge("observe", END);
 
     let compiled: CompiledStateGraph<ReActState> = graph.compile()?;
 

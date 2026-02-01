@@ -26,8 +26,8 @@ impl SqliteStore {
     /// Creates a new SQLite store and ensures the table exists.
     pub fn new(path: impl AsRef<Path>) -> Result<Self, StoreError> {
         let db_path = path.as_ref().to_path_buf();
-        let conn = rusqlite::Connection::open(&db_path)
-            .map_err(|e| StoreError::Storage(e.to_string()))?;
+        let conn =
+            rusqlite::Connection::open(&db_path).map_err(|e| StoreError::Storage(e.to_string()))?;
         conn.execute(
             r#"
             CREATE TABLE IF NOT EXISTS store_kv (
@@ -89,7 +89,10 @@ impl Store for SqliteStore {
             let mut rows = stmt
                 .query(params![ns, key])
                 .map_err(|e| StoreError::Storage(e.to_string()))?;
-            let row = match rows.next().map_err(|e| StoreError::Storage(e.to_string()))? {
+            let row = match rows
+                .next()
+                .map_err(|e| StoreError::Storage(e.to_string()))?
+            {
                 Some(r) => r,
                 None => return Ok::<_, StoreError>(None),
             };
@@ -149,17 +152,13 @@ impl Store for SqliteStore {
                 .map_err(|e| StoreError::Storage(e.to_string()))?;
             let rows = stmt
                 .query_map(params![ns], |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, String>(1)?,
-                    ))
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
                 })
                 .map_err(|e| StoreError::Storage(e.to_string()))?;
             let mut hits: Vec<StoreSearchHit> = Vec::new();
             for row in rows {
                 let (key, value_str) = row.map_err(|e| StoreError::Storage(e.to_string()))?;
-                let value =
-                    serde_json::from_str(&value_str)?;
+                let value = serde_json::from_str(&value_str)?;
                 hits.push(StoreSearchHit {
                     key,
                     value,

@@ -117,6 +117,9 @@ impl LlmClient for MockLlm {
             }
             None => (self.content.clone(), self.tool_calls.clone()),
         };
-        Ok(LlmResponse { content, tool_calls })
+        Ok(LlmResponse {
+            content,
+            tool_calls,
+        })
     }
 }

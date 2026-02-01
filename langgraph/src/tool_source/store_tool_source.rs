@@ -91,6 +91,7 @@ fn map_store_error(e: StoreError) -> ToolSourceError {
         StoreError::NotFound => ToolSourceError::NotFound("key not found".to_string()),
         StoreError::Serialization(s) => ToolSourceError::InvalidInput(s),
         StoreError::Storage(s) => ToolSourceError::Transport(s),
+        StoreError::EmbeddingError(s) => ToolSourceError::Transport(s),
     }
 }
 

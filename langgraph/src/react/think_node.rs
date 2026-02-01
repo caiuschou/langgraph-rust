@@ -9,10 +9,10 @@ use async_trait::async_trait;
 
 use crate::error::AgentError;
 use crate::graph::Next;
-use crate::Node;
 use crate::llm::LlmClient;
 use crate::message::Message;
 use crate::state::ReActState;
+use crate::Node;
 
 /// Think node: one ReAct step that produces assistant message and optional tool_calls.
 ///

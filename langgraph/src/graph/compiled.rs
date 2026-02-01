@@ -1,6 +1,7 @@
 //! Compiled state graph: immutable, supports invoke only.
 //!
-//! Built by `StateGraph::compile` or `compile_with_checkpointer`. Holds nodes, edge order, optional checkpointer.
+//! Built by `StateGraph::compile` or `compile_with_checkpointer`. Holds nodes and
+//! edge order (derived from explicit edges at compile time), optional checkpointer.
 //! When checkpointer is set and config.thread_id is provided, final state is saved after invoke. See docs/rust-langgraph/16-memory-design.md §4.1.
 
 use std::collections::HashMap;
@@ -9,6 +10,7 @@ use std::sync::Arc;
 use crate::error::AgentError;
 use crate::memory::{Checkpoint, CheckpointSource, Checkpointer, RunnableConfig, Store};
 
+use super::node_middleware::NodeMiddleware;
 use super::Next;
 use super::Node;
 
@@ -19,11 +21,13 @@ use super::Node;
 /// saves the final state for config.thread_id. When store is set (via `with_store` before compile),
 /// nodes can use it for long-term memory (e.g. namespace from config.user_id). See docs/rust-langgraph/16-memory-design.md §5.2.
 pub struct CompiledStateGraph<S> {
-    pub(super) nodes: HashMap<String, Box<dyn Node<S>>>,
+    pub(super) nodes: HashMap<String, Arc<dyn Node<S>>>,
     pub(super) edge_order: Vec<String>,
     pub(super) checkpointer: Option<Arc<dyn Checkpointer<S>>>,
     /// Optional long-term store; set when graph was built with `with_store`. Nodes use it via config or construction. See docs/rust-langgraph/16-memory-design.md §5.2.
     pub(super) store: Option<Arc<dyn Store>>,
+    /// Optional node middleware; set when built with `compile_with_middleware` or `compile_with_checkpointer_and_middleware`.
+    pub(super) middleware: Option<Arc<dyn NodeMiddleware<S>>>,
 }
 
 impl<S> CompiledStateGraph<S>
@@ -39,11 +43,7 @@ where
     /// - `Next::Continue`: run the next node in edge_order, or end if last.
     /// - `Next::Node(id)`: run the node with that id next.
     /// - `Next::End`: stop and return current state.
-    pub async fn invoke(
-        &self,
-        state: S,
-        config: Option<RunnableConfig>,
-    ) -> Result<S, AgentError> {
+    pub async fn invoke(&self, state: S, config: Option<RunnableConfig>) -> Result<S, AgentError> {
         let mut state = state;
         let mut current_id = self
             .edge_order
@@ -55,8 +55,19 @@ where
             let node = self
                 .nodes
                 .get(&current_id)
-                .expect("compiled graph has all nodes");
-            let (new_state, next) = node.run(state).await?;
+                .expect("compiled graph has all nodes")
+                .clone();
+            let (new_state, next) = if let Some(m) = &self.middleware {
+                let node_id = current_id.clone();
+                m.around_run(
+                    &node_id,
+                    state,
+                    Box::new(move |s| Box::pin(async move { node.run(s).await })),
+                )
+                .await?
+            } else {
+                node.run(state).await?
+            };
             state = new_state;
 
             match next {
