@@ -21,6 +21,7 @@ LangGraph-rust provides a lightweight framework for building stateful AI agents 
 - **Memory & Checkpointing**: In-memory and persistent storage for agent state
 - **Tool Integration**: Extensible tool system with MCP (Model Context Protocol) support
 - **Persistence**: Optional SQLite and LanceDB backends for long-term memory
+- **Middleware**: Wrap node execution with custom async logic (logging, monitoring, retry, etc.)
 
 ## Installation
 
@@ -351,6 +352,50 @@ graph.add_edge("tools", "agent");
 
 let compiled = graph.compile()?;
 let result = compiled.invoke(state, None).await?;
+```
+
+### Middleware
+
+Middleware allows you to wrap node execution with custom async logic (around pattern):
+
+```rust
+use std::sync::Arc;
+use langgraph::{AgentError, NodeMiddleware, Next, StateGraph};
+use std::pin::Pin;
+
+// Custom middleware that logs node execution
+struct LoggingMiddleware;
+
+#[async_trait]
+impl NodeMiddleware<MyState> for LoggingMiddleware {
+    async fn around_run(
+        &self,
+        node_id: &str,
+        state: MyState,
+        inner: Box<dyn FnOnce(MyState) -> Pin<Box<dyn std::future::Future<Output = Result<(MyState, Next), AgentError>> + Send>> + Send>,
+    ) -> Result<(MyState, Next), AgentError> {
+        eprintln!("[node] enter node={}", node_id);
+        let result = inner(state).await;
+        match &result {
+            Ok((_, ref next)) => eprintln!("[node] exit node={} next={:?}", node_id, next),
+            Err(e) => eprintln!("[node] exit node={} error={}", node_id, e),
+        }
+        result
+    }
+}
+
+// Use middleware via fluent API
+let middleware = Arc::new(LoggingMiddleware);
+let compiled = graph.with_middleware(middleware).compile()?;
+
+// Or pass to compile method
+let compiled = graph.compile_with_middleware(Arc::new(LoggingMiddleware))?;
+
+// Or combine with checkpointer
+let compiled = graph.compile_with_checkpointer_and_middleware(
+    checkpointer,
+    Arc::new(LoggingMiddleware)
+)?;
 ```
 
 ### ReAct Pattern
