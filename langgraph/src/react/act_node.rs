@@ -10,9 +10,9 @@ use serde_json::Value;
 
 use crate::error::AgentError;
 use crate::graph::Next;
-use crate::Node;
 use crate::state::{ReActState, ToolResult};
 use crate::tool_source::ToolSource;
+use crate::Node;
 
 /// Act node: one ReAct step that executes tool_calls and produces tool_results.
 ///
