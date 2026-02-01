@@ -3,6 +3,7 @@ CALUDE.md
 AGENTS.md
 
 idea/
+lancedb_data/
 
 # Cargo
 /target
