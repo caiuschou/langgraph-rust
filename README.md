@@ -38,8 +38,59 @@ async-trait = "0.1"
 
 - `mcp` (default): Enable MCP tool source for external tools
 - `sqlite` (default): Enable SQLite-based checkpointing and storage
-- `zhipu`: Enable OpenAI-compatible chat (e.g., GLM) via `async-openai`
+- `openai`: Enable OpenAI-compatible chat (e.g., OpenAI) via `async-openai`
 - `lance`: Enable LanceDB vector store for long-term memory
+
+## Configuration
+
+### Environment Variables
+
+The CLI loads configuration from a `.env` file in the project root. Copy `.env.example` to `.env` and fill in your values:
+
+```bash
+cp .env.example .env
+```
+
+#### Chat Configuration (LLM)
+
+| Variable | Description | Default | Example |
+|----------|-------------|----------|----------|
+| `OPENAI_API_KEY` | OpenAI API key (required) | - | `sk-...` |
+| `OPENAI_API_BASE` | API base URL | `https://api.openai.com/v1` | `https://api.openai.com/v1` |
+| `OPENAI_MODEL` | Model name | `gpt-4o-mini` | `gpt-4o-mini` |
+| `OPENAI_TEMPERATURE` | Sampling temperature (0-2) | - | `0.2` |
+| `OPENAI_TOOL_CHOICE` | Tool choice mode | - | `auto\|none\|required` |
+
+#### Embeddings Configuration (Vector Search)
+
+| Variable | Description | Default | Example |
+|----------|-------------|----------|----------|
+| `EMBEDDING_API_KEY` | Embeddings API key (optional, uses OPENAI_API_KEY if not set) | `OPENAI_API_KEY` | `sk-...` |
+| `EMBEDDING_API_BASE` | Embeddings API base URL (optional, uses OPENAI_API_BASE if not set) | `OPENAI_API_BASE` | `https://api.openai.com/v1` |
+| `EMBEDDING_MODEL` | Embeddings model name | `text-embedding-3-small` | `text-embedding-3-small` |
+
+#### Using Different Providers
+
+**Other OpenAI-compatible providers:**
+Just set the appropriate `OPENAI_API_BASE` and `EMBEDDING_API_BASE` URLs.
+
+#### Programmatic Usage
+
+You can also configure embeddings programmatically:
+
+```rust
+use langgraph_cli::RunConfig;
+use langgraph::OpenAIEmbedder;
+
+// Load config from .env
+let config = RunConfig::from_env()?;
+
+// Create embedder from config
+let embedder = config.create_embedder();
+
+// Embed text
+let vectors = embedder.embed(&["Hello, world!"])?;
+```
 
 ## Quick Start
 
@@ -171,20 +222,20 @@ For production use, replace the mock components with real implementations:
 ```rust
 use std::sync::Arc;
 use langgraph::{
-    ActNode, ChatZhipu, CompiledStateGraph, Message, MockToolSource,
+    ActNode, ChatOpenAI, CompiledStateGraph, Message, MockToolSource,
     ObserveNode, ReActState, REACT_SYSTEM_PROMPT, StateGraph, ThinkNode, ToolSource, START, END,
 };
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    dotenv::dotenv().ok();  // Load ZHIPU_API_KEY from .env
+    dotenv::dotenv().ok();  // Load OPENAI_API_KEY from .env
 
     // Create tool source and register tools with LLM
     let tool_source = MockToolSource::get_time_example();
     let tools = tool_source.list_tools().await?;
 
     // Initialize LLM with tool capabilities
-    let llm = ChatZhipu::new("glm-4-flash").with_tools(tools);
+    let llm = ChatOpenAI::new("gpt-4o-mini").with_tools(tools);
     let think = ThinkNode::new(Box::new(llm));
     let act = ActNode::new(Box::new(tool_source));
     let observe = ObserveNode::new();
@@ -269,9 +320,6 @@ impl ToolSource for MyTools {
 # Mock ReAct agent
 cargo run -p langgraph-examples --example react_linear -- "What time is it?"
 
-# ReAct with real LLM (requires ZHIPU_API_KEY)
-cargo run -p langgraph-examples --example react_zhipu -- "3+5 equals?"
-
 # ReAct with MCP tools
 cargo run -p langgraph-examples --example react_mcp -- "Search for Rust news"
 ```
@@ -284,7 +332,6 @@ The `langgraph-examples` crate contains various examples:
 |---------|-------------|
 | `echo` | Simple echo agent |
 | `react_linear` | Linear ReAct loop with reasoning |
-| `react_zhipu` | ReAct agent with GLM LLM |
 | `react_mcp` | ReAct agent with MCP tools |
 | `react_exa` | ReAct agent with web search |
 | `memory_checkpoint` | Checkpointing and state recovery |
@@ -558,10 +605,10 @@ let messages = vec![
 ];
 let response = llm.invoke(&messages).await?;
 
-// Or use OpenAI-compatible (with feature "zhipu")
-use langgraph::ChatZhipu;
+// Or use OpenAI-compatible (with feature "openai")
+use langgraph::ChatOpenAI;
 
-let llm = ChatZhipu::new("your-api-key");
+let llm = ChatOpenAI::new("your-api-key");
 ```
 
 ### Tools

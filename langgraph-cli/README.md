@@ -78,7 +78,7 @@ More on the library API and design: [docs/AS_LIBRARY.md](docs/AS_LIBRARY.md).
 ## Dependencies and features
 
 - Default `openai` feature: uses the real OpenAI API (requires the `.env` above).
-- Depends on `langgraph` with the `zhipu` feature (OpenAI-compatible client).
+- Depends on `langgraph` with the `openai` feature (OpenAI-compatible client).
 
 ## License
 

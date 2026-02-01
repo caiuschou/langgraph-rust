@@ -17,11 +17,13 @@ path = "src/main.rs"
 [features]
 default = ["openai"]
 # Use real OpenAI (reads OPENAI_API_BASE, OPENAI_API_KEY, OPENAI_MODEL from .env)
-openai = ["langgraph/zhipu", "dep:dotenv", "dep:async-openai"]
+openai = ["langgraph/openai", "dep:dotenv", "dep:async-openai"]
+# Add embeddings support for vector search
+embedding = ["langgraph/lance", "langgraph/openai"]
 
 [dependencies]
 async-trait = { workspace = true }
-langgraph = { path = "../langgraph", default-features = false, features = ["zhipu"] }
+langgraph = { path = "../langgraph", default-features = false, features = ["openai"] }
 tokio = { workspace = true }
 clap = { workspace = true }
 dotenv = { version = "0.15", optional = true }
