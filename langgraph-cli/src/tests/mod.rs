@@ -4,4 +4,3 @@
 //! Each submodule documents the behaviour under test.
 
 mod config;
-mod memory_tool_source;

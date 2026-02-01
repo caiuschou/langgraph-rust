@@ -2,7 +2,7 @@
 //!
 //! Uses checkpointer and store when thread_id/user_id are set.
 //! Interacts with [`RunConfig`](crate::config::RunConfig),
-//! [`MemoryToolSource`](crate::tools::MemoryToolSource),
+//! [`StoreToolSource`](langgraph::StoreToolSource),
 //! [`WithNodeLogging`](crate::middleware::WithNodeLogging).
 
 use std::sync::Arc;
@@ -10,13 +10,13 @@ use std::sync::Arc;
 use async_openai::config::OpenAIConfig;
 use langgraph::{
     ActNode, ChatOpenAI, CompiledStateGraph, MockToolSource, ObserveNode, RunnableConfig,
-    SqliteSaver, SqliteStore, StateGraph, ThinkNode, ToolSource, END, REACT_SYSTEM_PROMPT, START,
+    SqliteSaver, SqliteStore, StateGraph, StoreToolSource, ThinkNode, ToolSource, END,
+    REACT_SYSTEM_PROMPT, START,
 };
 use langgraph::{Message, ReActState};
 
 use crate::config::RunConfig;
 use crate::middleware::WithNodeLogging;
-use crate::tools::MemoryToolSource;
 
 use super::Error;
 
@@ -81,7 +81,7 @@ pub async fn run_with_config(config: &RunConfig, user_message: &str) -> Result<R
     } else if let Some(user_id) = config.user_id() {
         if let Some(s) = &store {
             let namespace = vec![user_id.to_string(), "memories".to_string()];
-            Box::new(MemoryToolSource::new(s.clone(), namespace))
+            Box::new(StoreToolSource::new(s.clone(), namespace))
         } else {
             Box::new(MockToolSource::get_time_example())
         }
