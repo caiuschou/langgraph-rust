@@ -28,3 +28,50 @@ pub enum CompilationError {
     #[error("edges must form a single linear chain from START to END: {0}")]
     InvalidChain(String),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// **Scenario**: Display of NodeNotFound contains "node not found" and the node id.
+    #[test]
+    fn compilation_error_display_node_not_found() {
+        let err = CompilationError::NodeNotFound("x".to_string());
+        let s = err.to_string();
+        assert!(s.contains("node not found"), "Display should contain 'node not found': {}", s);
+        assert!(s.contains("x"), "Display should contain node id: {}", s);
+    }
+
+    /// **Scenario**: Display of MissingStart contains "exactly one edge from START".
+    #[test]
+    fn compilation_error_display_missing_start() {
+        let err = CompilationError::MissingStart;
+        let s = err.to_string();
+        assert!(
+            s.to_lowercase().contains("start"),
+            "Display should mention START: {}",
+            s
+        );
+    }
+
+    /// **Scenario**: Display of MissingEnd contains "exactly one edge to END".
+    #[test]
+    fn compilation_error_display_missing_end() {
+        let err = CompilationError::MissingEnd;
+        let s = err.to_string();
+        assert!(s.to_lowercase().contains("end"), "Display should mention END: {}", s);
+    }
+
+    /// **Scenario**: Display of InvalidChain contains "single linear chain" and the reason.
+    #[test]
+    fn compilation_error_display_invalid_chain() {
+        let err = CompilationError::InvalidChain("reason".to_string());
+        let s = err.to_string();
+        assert!(
+            s.contains("single linear chain") || s.contains("linear chain"),
+            "Display should contain chain message: {}",
+            s
+        );
+        assert!(s.contains("reason"), "Display should contain reason: {}", s);
+    }
+}

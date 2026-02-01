@@ -34,3 +34,39 @@ where
         serde_json::from_slice(bytes).map_err(|e| CheckpointError::Serialization(e.to_string()))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+    struct TestState {
+        value: String,
+    }
+
+    /// **Scenario**: Serialize then deserialize yields the same value.
+    #[test]
+    fn json_serializer_roundtrip() {
+        let ser = JsonSerializer;
+        let state = TestState {
+            value: "hello".into(),
+        };
+        let bytes = ser.serialize(&state).unwrap();
+        let restored: TestState = ser.deserialize(&bytes).unwrap();
+        assert_eq!(state, restored);
+    }
+
+    /// **Scenario**: Invalid JSON on deserialize returns CheckpointError::Serialization.
+    #[test]
+    fn json_serializer_invalid_json_deserialize_returns_checkpoint_error() {
+        let ser = JsonSerializer;
+        let invalid = b"{ not valid json ]";
+        let result: Result<TestState, _> = ser.deserialize(invalid);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        match &err {
+            CheckpointError::Serialization(s) => assert!(!s.is_empty()),
+            _ => panic!("expected Serialization variant: {:?}", err),
+        }
+    }
+}

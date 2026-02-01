@@ -182,3 +182,35 @@ impl LlmClient for ChatOpenAI {
         })
     }
 }
+
+#[cfg(all(test, feature = "openai"))]
+mod tests {
+    use super::*;
+
+    /// **Scenario**: ChatOpenAI::new sets model; tools and temperature are None.
+    #[test]
+    fn chat_openai_new_creates_client() {
+        let _ = ChatOpenAI::new("gpt-4");
+        let _ = ChatOpenAI::new("gpt-4o-mini");
+    }
+
+    /// **Scenario**: ChatOpenAI::with_config uses custom config and model.
+    #[test]
+    fn chat_openai_with_config_creates_client() {
+        let config = OpenAIConfig::new().with_api_key("test-key");
+        let _ = ChatOpenAI::with_config(config, "gpt-4");
+    }
+
+    /// **Scenario**: Builder chain with_tools and with_temperature builds without panic.
+    #[test]
+    fn chat_openai_with_tools_and_temperature_builder() {
+        let tools = vec![ToolSpec {
+            name: "get_time".into(),
+            description: None,
+            input_schema: serde_json::json!({}),
+        }];
+        let _ = ChatOpenAI::new("gpt-4")
+            .with_tools(tools)
+            .with_temperature(0.5f32);
+    }
+}

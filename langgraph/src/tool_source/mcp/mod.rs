@@ -199,3 +199,15 @@ impl ToolSource for McpToolSource {
         task::block_in_place(|| self.call_tool_sync(name, arguments))
     }
 }
+
+#[cfg(all(test, feature = "mcp"))]
+mod tests {
+    use super::*;
+
+    /// **Scenario**: When command does not exist, McpToolSource::new returns an error.
+    #[test]
+    fn mcp_tool_source_new_invalid_command_returns_error() {
+        let result = McpToolSource::new("_nonexistent_command_that_does_not_exist_xyz_", vec![]);
+        assert!(result.is_err(), "expected Err for nonexistent command");
+    }
+}

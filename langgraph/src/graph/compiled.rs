@@ -115,3 +115,27 @@ where
         self.store.as_ref()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    /// **Scenario**: When edge_order is empty, invoke returns ExecutionFailed("empty graph").
+    #[tokio::test]
+    async fn invoke_empty_graph_returns_execution_failed() {
+        let graph = CompiledStateGraph::<crate::state::ReActState> {
+            nodes: HashMap::new(),
+            edge_order: vec![],
+            checkpointer: None,
+            store: None,
+            middleware: None,
+        };
+        let state = crate::state::ReActState::default();
+        let result = graph.invoke(state, None).await;
+        match &result {
+            Err(AgentError::ExecutionFailed(msg)) => assert!(msg.contains("empty graph"), "{}", msg),
+            _ => panic!("expected ExecutionFailed(\"empty graph\"), got {:?}", result),
+        }
+    }
+}

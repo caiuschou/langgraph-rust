@@ -28,6 +28,28 @@ pub enum CheckpointSource {
     Fork,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::{CheckpointMetadata, CheckpointSource};
+
+    /// **Scenario**: All CheckpointSource variants are Debug/Clone and can be used in metadata.
+    #[test]
+    fn checkpoint_source_all_variants() {
+        let _ = CheckpointSource::Input;
+        let _ = CheckpointSource::Loop;
+        let _ = CheckpointSource::Update;
+        let _ = CheckpointSource::Fork;
+        let s = CheckpointSource::Input;
+        let _ = format!("{:?}", s);
+        let c = s.clone();
+        let _ = CheckpointMetadata {
+            source: c,
+            step: 0,
+            created_at: None,
+        };
+    }
+}
+
 /// One checkpoint: state snapshot + channel versions + id/ts.
 ///
 /// Stored by Checkpointer keyed by (thread_id, checkpoint_ns, checkpoint_id).

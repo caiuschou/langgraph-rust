@@ -21,3 +21,34 @@ pub struct RunnableConfig {
     /// Optional user id; used by Store for cross-thread memory (namespace).
     pub user_id: Option<String>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// **Scenario**: RunnableConfig::default() has all optionals None and checkpoint_ns empty.
+    #[test]
+    fn runnable_config_default_all_optionals_none_or_empty() {
+        let c = RunnableConfig::default();
+        assert!(c.thread_id.is_none());
+        assert!(c.checkpoint_id.is_none());
+        assert!(c.checkpoint_ns.is_empty());
+        assert!(c.user_id.is_none());
+    }
+
+    /// **Scenario**: After setting fields and cloning, cloned values match.
+    #[test]
+    fn runnable_config_clone() {
+        let c = RunnableConfig {
+            thread_id: Some("t1".into()),
+            checkpoint_id: Some("cp1".into()),
+            checkpoint_ns: "ns".into(),
+            user_id: Some("u1".into()),
+        };
+        let c2 = c.clone();
+        assert_eq!(c.thread_id, c2.thread_id);
+        assert_eq!(c.checkpoint_id, c2.checkpoint_id);
+        assert_eq!(c.checkpoint_ns, c2.checkpoint_ns);
+        assert_eq!(c.user_id, c2.user_id);
+    }
+}

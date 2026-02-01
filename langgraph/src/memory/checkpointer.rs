@@ -23,6 +23,32 @@ pub enum CheckpointError {
     NotFound(String),
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// **Scenario**: Display of each CheckpointError variant contains expected keywords.
+    #[test]
+    fn checkpoint_error_display_all_variants() {
+        assert!(CheckpointError::ThreadIdRequired
+            .to_string()
+            .to_lowercase()
+            .contains("thread"));
+        assert!(CheckpointError::Serialization("err".into())
+            .to_string()
+            .to_lowercase()
+            .contains("serialization"));
+        assert!(CheckpointError::Storage("io".into())
+            .to_string()
+            .to_lowercase()
+            .contains("storage"));
+        assert!(CheckpointError::NotFound("id".into())
+            .to_string()
+            .to_lowercase()
+            .contains("not found"));
+    }
+}
+
 /// Saves and loads checkpoints by (thread_id, checkpoint_ns, checkpoint_id).
 ///
 /// Aligns with LangGraph BaseCheckpointSaver (put, get_tuple, list).

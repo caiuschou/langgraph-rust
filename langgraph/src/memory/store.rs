@@ -51,6 +51,40 @@ mod tests {
             _ => panic!("expected Serialization variant"),
         }
     }
+
+    /// **Scenario**: Display of each StoreError variant contains expected keywords.
+    #[test]
+    fn store_error_display_each_variant() {
+        let s = StoreError::Serialization("err".into()).to_string();
+        assert!(s.to_lowercase().contains("serialization"), "{}", s);
+        let s = StoreError::Storage("io".into()).to_string();
+        assert!(s.to_lowercase().contains("storage"), "{}", s);
+        let s = StoreError::NotFound.to_string();
+        assert!(s.to_lowercase().contains("not found"), "{}", s);
+        let s = StoreError::EmbeddingError("api".into()).to_string();
+        assert!(s.to_lowercase().contains("embedding"), "{}", s);
+    }
+
+    /// **Scenario**: StoreSearchHit key/value/score can be constructed and accessed.
+    #[test]
+    fn store_search_hit_fields() {
+        let hit = StoreSearchHit {
+            key: "k1".into(),
+            value: serde_json::json!({"v": 1}),
+            score: Some(0.9),
+        };
+        assert_eq!(hit.key, "k1");
+        assert_eq!(hit.value.get("v").and_then(|v| v.as_i64()), Some(1));
+        assert_eq!(hit.score, Some(0.9));
+
+        let hit_no_score = StoreSearchHit {
+            key: "k2".into(),
+            value: serde_json::Value::Null,
+            score: None,
+        };
+        assert_eq!(hit_no_score.key, "k2");
+        assert!(hit_no_score.score.is_none());
+    }
 }
 
 /// A single hit returned by [`Store::search`].

@@ -158,10 +158,13 @@ where
             .filter(|(f, _)| f == START)
             .map(|(_, t)| t.clone())
             .collect();
-        if start_edges.len() != 1 {
-            return Err(CompilationError::MissingStart);
-        }
-        let first = start_edges.into_iter().next().unwrap();
+        let first = match start_edges.len() {
+            0 => return Err(CompilationError::MissingStart),
+            1 => start_edges.into_iter().next().unwrap(),
+            _ => return Err(CompilationError::InvalidChain(
+                "multiple edges from START (branch)".into(),
+            )),
+        };
 
         let end_edges: Vec<_> = self
             .edges
