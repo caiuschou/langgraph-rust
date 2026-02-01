@@ -148,7 +148,9 @@ fn builder_with_memory_sets_both_thread_and_user_id() {
 fn builder_without_memory_clears_memory() {
     let saved_key = std::env::var("OPENAI_API_KEY").ok();
     std::env::set_var("OPENAI_API_KEY", "key");
-    let config = RunConfig::from_env().expect("need key").with_short_term_memory("t1");
+    let config = RunConfig::from_env()
+        .expect("need key")
+        .with_short_term_memory("t1");
     if let Some(ref k) = saved_key {
         std::env::set_var("OPENAI_API_KEY", k);
     } else {

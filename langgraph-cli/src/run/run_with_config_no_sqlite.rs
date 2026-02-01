@@ -18,10 +18,7 @@ use crate::middleware::WithNodeLogging;
 use super::Error;
 
 /// Run ReAct graph with given config; does not read .env, returns final state.
-pub async fn run_with_config(
-    config: &RunConfig,
-    user_message: &str,
-) -> Result<ReActState, Error> {
+pub async fn run_with_config(config: &RunConfig, user_message: &str) -> Result<ReActState, Error> {
     let openai_config = OpenAIConfig::new()
         .with_api_base(&config.api_base)
         .with_api_key(config.api_key.clone());
