@@ -7,15 +7,21 @@ use std::sync::Arc;
 
 use langgraph::{
     ActNode, CompiledStateGraph, Message, MockLlm, MockToolSource, ObserveNode, ReActState,
-    StateGraph, ThinkNode, START, END,
+    StateGraph, ThinkNode, END, START,
 };
 
 #[tokio::test]
 async fn react_linear_chain_user_to_tool_result_in_messages() {
     let mut graph = StateGraph::<ReActState>::new();
     graph
-        .add_node("think", Arc::new(ThinkNode::new(Box::new(MockLlm::with_get_time_call()))))
-        .add_node("act", Arc::new(ActNode::new(Box::new(MockToolSource::get_time_example()))))
+        .add_node(
+            "think",
+            Arc::new(ThinkNode::new(Box::new(MockLlm::with_get_time_call()))),
+        )
+        .add_node(
+            "act",
+            Arc::new(ActNode::new(Box::new(MockToolSource::get_time_example()))),
+        )
         .add_node("observe", Arc::new(ObserveNode::new()))
         .add_edge(START, "think")
         .add_edge("think", "act")
@@ -38,7 +44,9 @@ async fn react_linear_chain_user_to_tool_result_in_messages() {
     assert!(out.messages.len() >= 3);
     assert!(matches!(&out.messages[0], Message::User(_)));
     assert!(matches!(&out.messages[1], Message::Assistant(_)));
-    assert!(matches!(&out.messages[2], Message::User(s) if s.contains("Tool") && s.contains("2025-01-29")));
+    assert!(
+        matches!(&out.messages[2], Message::User(s) if s.contains("Tool") && s.contains("2025-01-29"))
+    );
     assert!(out.tool_calls.is_empty());
     assert!(out.tool_results.is_empty());
 }
@@ -53,7 +61,10 @@ async fn react_multi_round_loop_then_end() {
             "think",
             Arc::new(ThinkNode::new(Box::new(MockLlm::first_tools_then_end()))),
         )
-        .add_node("act", Arc::new(ActNode::new(Box::new(MockToolSource::get_time_example()))))
+        .add_node(
+            "act",
+            Arc::new(ActNode::new(Box::new(MockToolSource::get_time_example()))),
+        )
         .add_node("observe", Arc::new(ObserveNode::with_loop()))
         .add_edge(START, "think")
         .add_edge("think", "act")

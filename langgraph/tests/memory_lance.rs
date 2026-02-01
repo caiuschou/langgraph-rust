@@ -89,34 +89,19 @@ async fn lance_store_search_with_query() {
     let ns = vec!["user1".into(), "memories".into()];
 
     store
-        .put(
-            &ns,
-            "a",
-            &serde_json::json!({"text": "rust programming"}),
-        )
+        .put(&ns, "a", &serde_json::json!({"text": "rust programming"}))
         .await
         .unwrap();
     store
-        .put(
-            &ns,
-            "b",
-            &serde_json::json!({"text": "python scripting"}),
-        )
+        .put(&ns, "b", &serde_json::json!({"text": "python scripting"}))
         .await
         .unwrap();
     store
-        .put(
-            &ns,
-            "c",
-            &serde_json::json!({"text": "rust langgraph"}),
-        )
+        .put(&ns, "c", &serde_json::json!({"text": "rust langgraph"}))
         .await
         .unwrap();
 
-    let hits = store
-        .search(&ns, Some("rust"), Some(10))
-        .await
-        .unwrap();
+    let hits = store.search(&ns, Some("rust"), Some(10)).await.unwrap();
     assert!(!hits.is_empty());
     assert!(hits.iter().any(|h| h.key == "a" || h.key == "c"));
     for h in &hits {

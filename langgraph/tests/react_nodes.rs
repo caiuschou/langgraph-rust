@@ -170,7 +170,9 @@ async fn observe_node_appends_tool_results_as_user_messages_and_clears_tool_fiel
     };
     let (out, _) = node.run(state).await.unwrap();
     assert_eq!(out.messages.len(), 3);
-    assert!(matches!(&out.messages[2], Message::User(s) if s.contains("Tool") && s.contains("2025-01-29 12:00:00")));
+    assert!(
+        matches!(&out.messages[2], Message::User(s) if s.contains("Tool") && s.contains("2025-01-29 12:00:00"))
+    );
     assert!(out.tool_calls.is_empty());
     assert!(out.tool_results.is_empty());
 }
@@ -203,7 +205,10 @@ async fn observe_node_default_constructible() {
 async fn observe_node_with_loop_returns_node_think_when_had_tool_calls() {
     let node = ObserveNode::with_loop();
     let state = ReActState {
-        messages: vec![Message::user("Hi"), Message::Assistant("I'll check.".into())],
+        messages: vec![
+            Message::user("Hi"),
+            Message::Assistant("I'll check.".into()),
+        ],
         tool_calls: vec![ToolCall {
             name: "get_time".into(),
             arguments: "{}".into(),

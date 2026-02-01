@@ -32,4 +32,3 @@ impl Agent for EchoAgent {
         Ok(AgentState { messages })
     }
 }
-

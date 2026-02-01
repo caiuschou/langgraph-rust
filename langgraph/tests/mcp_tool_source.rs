@@ -9,8 +9,7 @@ use langgraph::tool_source::{McpToolSource, ToolSource};
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "spawns mcp-filesystem-server; run with --ignored"]
 async fn mcp_tool_source_list_and_call() {
-    let command = std::env::var("MCP_SERVER_COMMAND")
-        .unwrap_or_else(|_| "cargo".to_string());
+    let command = std::env::var("MCP_SERVER_COMMAND").unwrap_or_else(|_| "cargo".to_string());
     let args = std::env::var("MCP_SERVER_ARGS")
         .map(|s| s.split_whitespace().map(String::from).collect())
         .unwrap_or_else(|_| {

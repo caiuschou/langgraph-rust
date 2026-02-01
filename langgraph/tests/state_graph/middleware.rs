@@ -3,9 +3,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use langgraph::{
-    AgentError, Message, NodeMiddleware, Next, StateGraph, START, END,
-};
+use langgraph::{AgentError, Message, Next, NodeMiddleware, StateGraph, END, START};
 
 use crate::common::{AgentState, EchoAgent};
 
@@ -29,8 +27,9 @@ impl NodeMiddleware<AgentState> for LoggingMiddleware {
         node_id: &str,
         state: AgentState,
         inner: Box<
-            dyn FnOnce(AgentState)
-                -> std::pin::Pin<
+            dyn FnOnce(
+                    AgentState,
+                ) -> std::pin::Pin<
                     Box<
                         dyn std::future::Future<Output = Result<(AgentState, Next), AgentError>>
                             + Send,
