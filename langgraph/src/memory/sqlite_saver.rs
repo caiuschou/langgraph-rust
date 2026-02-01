@@ -43,9 +43,7 @@ fn created_at_to_i64(t: &Option<std::time::SystemTime>) -> Option<i64> {
 }
 
 fn i64_to_created_at(v: Option<i64>) -> Option<std::time::SystemTime> {
-    v.and_then(|ms| {
-        std::time::UNIX_EPOCH.checked_add(std::time::Duration::from_millis(ms as u64))
-    })
+    v.and_then(|ms| std::time::UNIX_EPOCH.checked_add(std::time::Duration::from_millis(ms as u64)))
 }
 
 /// SQLite-backed checkpointer. Key: (thread_id, checkpoint_ns, checkpoint_id).
@@ -63,7 +61,10 @@ where
     S: Clone + Send + Sync + 'static,
 {
     /// Creates a new SQLite checkpointer and ensures the table exists.
-    pub fn new(path: impl AsRef<Path>, serializer: Arc<dyn Serializer<S>>) -> Result<Self, CheckpointError> {
+    pub fn new(
+        path: impl AsRef<Path>,
+        serializer: Arc<dyn Serializer<S>>,
+    ) -> Result<Self, CheckpointError> {
         let db_path = path.as_ref().to_path_buf();
         let conn = rusqlite::Connection::open(&db_path)
             .map_err(|e| CheckpointError::Storage(e.to_string()))?;
@@ -85,7 +86,10 @@ where
             [],
         )
         .map_err(|e| CheckpointError::Storage(e.to_string()))?;
-        Ok(Self { db_path, serializer })
+        Ok(Self {
+            db_path,
+            serializer,
+        })
     }
 
     fn thread_id_required(config: &RunnableConfig) -> Result<String, CheckpointError> {
@@ -157,15 +161,7 @@ where
         let want_id = config.checkpoint_id.clone();
         let db_path = self.db_path.clone();
 
-        type RowData = (
-            String,
-            String,
-            Vec<u8>,
-            String,
-            String,
-            i64,
-            Option<i64>,
-        );
+        type RowData = (String, String, Vec<u8>, String, String, i64, Option<i64>);
         let row: Option<RowData> = tokio::task::spawn_blocking(move || -> Result<Option<RowData>, CheckpointError> {
             let conn = rusqlite::Connection::open(&db_path)
                 .map_err(|e| CheckpointError::Storage(e.to_string()))?;
@@ -208,11 +204,18 @@ where
         .await
         .map_err(|e| CheckpointError::Storage(e.to_string()))??;
 
-        let (checkpoint_id, ts, payload, channel_versions_json, metadata_source, metadata_step, metadata_created_at): RowData =
-            match row {
-                Some(r) => r,
-                None => return Ok(None),
-            };
+        let (
+            checkpoint_id,
+            ts,
+            payload,
+            channel_versions_json,
+            metadata_source,
+            metadata_step,
+            metadata_created_at,
+        ): RowData = match row {
+            Some(r) => r,
+            None => return Ok(None),
+        };
 
         let channel_values = self.serializer.deserialize(&payload)?;
         let channel_versions: std::collections::HashMap<String, u64> =

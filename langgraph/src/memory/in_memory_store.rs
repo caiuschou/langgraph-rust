@@ -70,9 +70,7 @@ impl Store for InMemoryStore {
         let mut keys: Vec<String> = guard
             .keys()
             .filter(|k| k.starts_with(&prefix))
-            .map(|k| {
-                k.strip_prefix(&prefix).unwrap_or(k).to_string()
-            })
+            .map(|k| k.strip_prefix(&prefix).unwrap_or(k).to_string())
             .collect();
         keys.sort();
         keys.dedup();
@@ -103,7 +101,10 @@ impl Store for InMemoryStore {
             if !q.is_empty() {
                 hits.retain(|h| {
                     h.key.contains(q)
-                        || h.value.to_string().to_lowercase().contains(&q.to_lowercase())
+                        || h.value
+                            .to_string()
+                            .to_lowercase()
+                            .contains(&q.to_lowercase())
                 });
             }
         }
