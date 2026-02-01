@@ -23,7 +23,7 @@ pub use session::{McpSession, McpSessionError};
 /// `tools/call`. Used by ReAct's ActNode and by LLM `with_tools`.
 ///
 /// **Interaction**: Implements `ToolSource`; used by ActNode and by examples
-/// that pass tools to ChatZhipu/ChatOpenAI. Holds `McpSession` behind Mutex (feature `zhipu`).
+/// that pass tools to ChatOpenAI. Holds `McpSession` behind Mutex (feature `openai`).
 /// for interior mutability (ToolSource uses `&self`).
 pub struct McpToolSource {
     session: Mutex<McpSession>,
@@ -90,9 +90,9 @@ impl McpToolSource {
 
         let mut specs = Vec::with_capacity(tools_array.len());
         for t in tools_array {
-            let obj = t.as_object().ok_or_else(|| {
-                ToolSourceError::Transport("tool item not an object".into())
-            })?;
+            let obj = t
+                .as_object()
+                .ok_or_else(|| ToolSourceError::Transport("tool item not an object".into()))?;
             let name = obj
                 .get("name")
                 .and_then(|v| v.as_str())
@@ -140,9 +140,9 @@ impl McpToolSource {
             return Err(ToolSourceError::JsonRpc(err.message));
         }
 
-        let result_value = result.result.ok_or_else(|| {
-            ToolSourceError::Transport("no result in tools/call response".into())
-        })?;
+        let result_value = result
+            .result
+            .ok_or_else(|| ToolSourceError::Transport("no result in tools/call response".into()))?;
 
         if result_value
             .get("isError")

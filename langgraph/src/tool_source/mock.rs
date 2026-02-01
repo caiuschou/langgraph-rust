@@ -61,7 +61,11 @@ impl ToolSource for MockToolSource {
         Ok(self.tools.clone())
     }
 
-    async fn call_tool(&self, _name: &str, _arguments: Value) -> Result<ToolCallContent, ToolSourceError> {
+    async fn call_tool(
+        &self,
+        _name: &str,
+        _arguments: Value,
+    ) -> Result<ToolCallContent, ToolSourceError> {
         Ok(ToolCallContent {
             text: self.call_result.clone(),
         })

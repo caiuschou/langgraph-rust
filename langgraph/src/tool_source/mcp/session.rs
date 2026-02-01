@@ -12,7 +12,7 @@ use mcp_client::stdio::{
     StdioStream,
 };
 use mcp_core::{MessageId, NotificationMessage, RequestMessage, ResultMessage};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 /// Protocol version for MCP initialize.
 const PROTOCOL_VERSION: &str = "2025-11-25";
@@ -101,7 +101,11 @@ impl McpSession {
                     .send(&notification)
                     .map_err(McpSessionError::Transport)?;
             }
-            None => return Err(McpSessionError::Initialize("timeout waiting for initialize".into())),
+            None => {
+                return Err(McpSessionError::Initialize(
+                    "timeout waiting for initialize".into(),
+                ))
+            }
         }
 
         Ok(())
