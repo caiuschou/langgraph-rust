@@ -30,6 +30,7 @@ async fn run_with_config_use_exa_mcp_without_mcp_feature_returns_error() {
     };
     let mut config = config;
     config.use_exa_mcp = true;
+    config.exa_api_key = Some("dummy-key-for-test".to_string());
 
     let result = run_with_config(&config, "hi").await;
 

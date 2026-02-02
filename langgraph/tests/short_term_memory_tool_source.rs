@@ -1,7 +1,7 @@
 //! Unit tests for ShortTermMemoryToolSource.
 //!
 //! Verifies: without set_call_context get_recent_messages returns []; with set_call_context
-//! returns corresponding messages; with limit returns last N. See idea/memory-tools-design.md §6.
+//! returns corresponding messages; with limit returns last N. See docs/rust-langgraph/tools-refactor §6.
 
 use langgraph::message::Message;
 use langgraph::tool_source::{ShortTermMemoryToolSource, ToolCallContext, ToolSource, TOOL_GET_RECENT_MESSAGES};
@@ -9,7 +9,7 @@ use serde_json::json;
 
 #[tokio::test]
 async fn short_term_memory_list_tools_returns_get_recent_messages() {
-    let source = ShortTermMemoryToolSource::new();
+    let source = ShortTermMemoryToolSource::new().await;
     let tools = source.list_tools().await.unwrap();
     assert_eq!(tools.len(), 1);
     assert_eq!(tools[0].name, TOOL_GET_RECENT_MESSAGES);
@@ -17,14 +17,14 @@ async fn short_term_memory_list_tools_returns_get_recent_messages() {
 
 #[tokio::test]
 async fn short_term_memory_without_context_returns_empty_array() {
-    let source = ShortTermMemoryToolSource::new();
+    let source = ShortTermMemoryToolSource::new().await;
     let r = source.call_tool(TOOL_GET_RECENT_MESSAGES, json!({})).await.unwrap();
     assert_eq!(r.text, "[]");
 }
 
 #[tokio::test]
 async fn short_term_memory_with_context_returns_messages() {
-    let source = ShortTermMemoryToolSource::new();
+    let source = ShortTermMemoryToolSource::new().await;
     let messages = vec![
         Message::user("hello"),
         Message::assistant("hi"),
@@ -44,7 +44,7 @@ async fn short_term_memory_with_context_returns_messages() {
 
 #[tokio::test]
 async fn short_term_memory_with_limit_returns_last_n() {
-    let source = ShortTermMemoryToolSource::new();
+    let source = ShortTermMemoryToolSource::new().await;
     let messages = vec![
         Message::user("1"),
         Message::assistant("2"),
@@ -67,7 +67,7 @@ async fn short_term_memory_with_limit_returns_last_n() {
 /// Verifies call_tool_with_context (explicit context) works without set_call_context (§7.2).
 #[tokio::test]
 async fn short_term_memory_call_tool_with_context_uses_explicit_ctx() {
-    let source = ShortTermMemoryToolSource::new();
+    let source = ShortTermMemoryToolSource::new().await;
     let ctx = ToolCallContext {
         recent_messages: vec![Message::user("a"), Message::assistant("b")],
     };

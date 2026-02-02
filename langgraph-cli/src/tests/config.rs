@@ -1,8 +1,22 @@
 //! Unit tests for [`RunConfig`](crate::config::RunConfig) and [`MemoryConfig`](crate::config::MemoryConfig).
 //!
 //! Scenarios: from_env with/without OPENAI_API_KEY, builder methods, accessors.
+//! Tests that touch OPENAI_API_KEY use a static lock so they do not run in parallel
+//! and overwrite each other's environment.
+
+use std::sync::Mutex;
 
 use crate::config::{MemoryConfig, RunConfig};
+
+/// Lock used by tests that set/remove OPENAI_API_KEY so they run serially and do not race.
+static ENV_API_KEY_LOCK: std::sync::OnceLock<Mutex<()>> = std::sync::OnceLock::new();
+
+fn env_api_key_lock() -> std::sync::MutexGuard<'static, ()> {
+    ENV_API_KEY_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap()
+}
 
 /// **Scenario**: When OPENAI_API_KEY is not set, from_env returns an error.
 ///
@@ -11,6 +25,7 @@ use crate::config::{MemoryConfig, RunConfig};
 /// Then: result is Err and the error message mentions OPENAI_API_KEY
 #[test]
 fn from_env_fails_when_api_key_is_missing() {
+    let _guard = env_api_key_lock();
     let saved = std::env::var("OPENAI_API_KEY").ok();
     std::env::remove_var("OPENAI_API_KEY");
 
@@ -38,6 +53,7 @@ fn from_env_fails_when_api_key_is_missing() {
 /// Then: result is Ok, api_base defaults to OpenAI URL, model defaults to gpt-4o-mini
 #[test]
 fn from_env_succeeds_with_defaults_when_api_key_is_set() {
+    let _guard = env_api_key_lock();
     let saved_base = std::env::var("OPENAI_API_BASE").ok();
     let saved_model = std::env::var("OPENAI_MODEL").ok();
     let saved_key = std::env::var("OPENAI_API_KEY").ok();
@@ -77,6 +93,7 @@ fn from_env_succeeds_with_defaults_when_api_key_is_set() {
 /// Then: memory is ShortTerm and thread_id() is Some("thread-1")
 #[test]
 fn builder_with_short_term_memory_sets_thread_id() {
+    let _guard = env_api_key_lock();
     let saved_key = std::env::var("OPENAI_API_KEY").ok();
     std::env::set_var("OPENAI_API_KEY", "key");
     let config = RunConfig::from_env().expect("need key");
@@ -100,6 +117,7 @@ fn builder_with_short_term_memory_sets_thread_id() {
 /// Then: memory is LongTerm and user_id() is Some("user-1")
 #[test]
 fn builder_with_long_term_memory_sets_user_id() {
+    let _guard = env_api_key_lock();
     let saved_key = std::env::var("OPENAI_API_KEY").ok();
     std::env::set_var("OPENAI_API_KEY", "key");
     let config = RunConfig::from_env().expect("need key");
@@ -123,6 +141,7 @@ fn builder_with_long_term_memory_sets_user_id() {
 /// Then: thread_id() is Some("thread-1") and user_id() is Some("user-1")
 #[test]
 fn builder_with_memory_sets_both_thread_and_user_id() {
+    let _guard = env_api_key_lock();
     let saved_key = std::env::var("OPENAI_API_KEY").ok();
     std::env::set_var("OPENAI_API_KEY", "key");
     let config = RunConfig::from_env().expect("need key");
@@ -146,6 +165,7 @@ fn builder_with_memory_sets_both_thread_and_user_id() {
 /// Then: memory is NoMemory and thread_id() and user_id() are None
 #[test]
 fn builder_without_memory_clears_memory() {
+    let _guard = env_api_key_lock();
     let saved_key = std::env::var("OPENAI_API_KEY").ok();
     std::env::set_var("OPENAI_API_KEY", "key");
     let config = RunConfig::from_env()
@@ -171,6 +191,7 @@ fn builder_without_memory_clears_memory() {
 /// Then: it returns the same value as api_key
 #[test]
 fn embedding_api_key_falls_back_to_api_key() {
+    let _guard = env_api_key_lock();
     let saved_key = std::env::var("OPENAI_API_KEY").ok();
     std::env::set_var("OPENAI_API_KEY", "main-key");
     std::env::remove_var("EMBEDDING_API_KEY");
