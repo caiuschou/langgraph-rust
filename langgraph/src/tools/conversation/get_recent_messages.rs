@@ -17,7 +17,9 @@ pub const TOOL_GET_RECENT_MESSAGES: &str = "get_recent_messages";
 /// # Examples
 ///
 /// ```no_run
-/// use langgraph::tools::conversation::GetRecentMessagesTool;
+/// # #[tokio::main]
+/// # async fn main() {
+/// use langgraph::tools::{GetRecentMessagesTool, Tool};
 /// use langgraph::message::Message;
 /// use langgraph::tool_source::ToolCallContext;
 /// use serde_json::json;
@@ -34,6 +36,7 @@ pub const TOOL_GET_RECENT_MESSAGES: &str = "get_recent_messages";
 /// let args = json!({"limit": 2});
 /// let result = tool.call(args, Some(&context)).await.unwrap();
 /// assert!(result.text.contains("hello"));
+/// # }
 /// ```
 ///
 /// # Interaction
@@ -52,7 +55,7 @@ impl GetRecentMessagesTool {
     /// # Examples
     ///
     /// ```
-    /// use langgraph::tools::conversation::GetRecentMessagesTool;
+    /// use langgraph::tools::GetRecentMessagesTool;
     ///
     /// let tool = GetRecentMessagesTool;
     /// ```
