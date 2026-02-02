@@ -3,7 +3,7 @@
 //! Interacts with [`MemoryConfig`](super::MemoryConfig), [`run_with_config`](crate::run) and
 //! langgraph's `ToolChoiceMode`, `OpenAIEmbedder`.
 
-use super::MemoryConfig;
+use super::{MemoryConfig, ToolSourceConfig};
 use langgraph::ToolChoiceMode;
 
 /// Error type used for config loading.
@@ -28,14 +28,12 @@ pub struct RunConfig {
     pub embedding_api_base: Option<String>,
     /// Embeddings model name, e.g. `text-embedding-3-small`.
     pub embedding_model: Option<String>,
-    /// Memory configuration for short-term and/or long-term memory.
+    /// Memory configuration for short-term and/or long-term memory. Defaults to NoMemory when THREAD_ID/USER_ID not set.
     pub memory: MemoryConfig,
-    /// SQLite database path for persistence. Defaults to "memory.db".
+    /// SQLite database path for persistence. Defaults to "memory.db" when DB_PATH not set.
     pub db_path: Option<String>,
-    /// Use Exa MCP for web search. Enables Exa's remote MCP server.
-    pub use_exa_mcp: bool,
-    /// Exa API key for MCP authentication.
-    pub exa_api_key: Option<String>,
+    /// Tool source configuration (e.g. Exa MCP). When exa_api_key is None, Exa is off by default.
+    pub tool_source: ToolSourceConfig,
     /// Exa MCP server URL. Default: `https://mcp.exa.ai/mcp`.
     pub mcp_exa_url: String,
     /// Command for mcp-remote (stdio→HTTP bridge). Default: `npx`.
@@ -45,6 +43,49 @@ pub struct RunConfig {
 }
 
 impl RunConfig {
+    /// Apply optional overrides from `RunOptions` to this config.
+    ///
+    /// Only set fields in `options` override; memory is set when `thread_id` and/or
+    /// `user_id` are present. Exa is enabled when `mcp_exa` is true and a key is
+    /// available (from options or env).
+    pub fn apply_options(&mut self, options: &super::RunOptions) {
+        if let Some(t) = options.temperature {
+            self.temperature = Some(t);
+        }
+        if let Some(tc) = options.tool_choice {
+            self.tool_choice = Some(tc);
+        }
+        if options.thread_id.is_some() || options.user_id.is_some() {
+            self.memory = match (&options.thread_id, &options.user_id) {
+                (Some(tid), Some(uid)) => MemoryConfig::Both {
+                    thread_id: tid.clone(),
+                    user_id: uid.clone(),
+                },
+                (Some(tid), None) => MemoryConfig::ShortTerm {
+                    thread_id: tid.clone(),
+                },
+                (None, Some(uid)) => MemoryConfig::LongTerm {
+                    user_id: uid.clone(),
+                },
+                (None, None) => MemoryConfig::NoMemory,
+            };
+        }
+        if options.db_path.is_some() {
+            self.db_path = options.db_path.clone();
+        }
+        if let Some(key) = &options.exa_api_key {
+            self.tool_source.exa_api_key = Some(key.clone());
+        }
+        if options.mcp_exa && self.tool_source.exa_api_key.is_none() {
+            if let Ok(key) = std::env::var("EXA_API_KEY") {
+                self.tool_source.exa_api_key = Some(key);
+            }
+        }
+        if let Some(url) = &options.mcp_exa_url {
+            self.mcp_exa_url = url.clone();
+        }
+    }
+
     /// Enable short-term memory (checkpointer) for conversation history.
     pub fn with_short_term_memory(mut self, thread_id: &str) -> Self {
         self.memory = MemoryConfig::ShortTerm {
@@ -111,6 +152,21 @@ impl RunConfig {
             .unwrap_or("text-embedding-3-small")
     }
 
+    /// Builds a langgraph [`ReactBuildConfig`](langgraph::ReactBuildConfig) for use with
+    /// [`build_react_run_context`](langgraph::build_react_run_context). CLI-specific RunConfig
+    /// is converted to the minimal config required by the builder.
+    pub fn to_react_build_config(&self) -> langgraph::ReactBuildConfig {
+        langgraph::ReactBuildConfig {
+            db_path: self.db_path.clone(),
+            thread_id: self.thread_id().map(ToString::to_string),
+            user_id: self.user_id().map(ToString::to_string),
+            exa_api_key: self.tool_source.exa_api_key.clone(),
+            mcp_exa_url: self.mcp_exa_url.clone(),
+            mcp_remote_cmd: self.mcp_remote_cmd.clone(),
+            mcp_remote_args: self.mcp_remote_args.clone(),
+        }
+    }
+
     #[cfg(all(feature = "embedding", feature = "openai"))]
     /// Create an OpenAIEmbedder from this configuration.
     ///
@@ -163,12 +219,12 @@ impl RunConfig {
             .or_else(|| Some("text-embedding-3-small".to_string()));
         let thread_id = std::env::var("THREAD_ID").ok();
         let user_id = std::env::var("USER_ID").ok();
-        let db_path = std::env::var("DB_PATH").ok();
-        let exa_api_key = std::env::var("EXA_API_KEY").ok();
-        let use_exa_mcp = std::env::var("USE_EXA_MCP")
+        let db_path = std::env::var("DB_PATH")
             .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or_else(|| exa_api_key.is_some());
+            .or_else(|| Some("memory.db".to_string()));
+        let tool_source = ToolSourceConfig {
+            exa_api_key: std::env::var("EXA_API_KEY").ok(),
+        };
         let mcp_exa_url =
             std::env::var("MCP_EXA_URL").unwrap_or_else(|_| "https://mcp.exa.ai/mcp".to_string());
         let mcp_remote_cmd = std::env::var("MCP_REMOTE_CMD").unwrap_or_else(|_| "npx".to_string());
@@ -194,8 +250,7 @@ impl RunConfig {
             embedding_model,
             memory,
             db_path,
-            use_exa_mcp,
-            exa_api_key,
+            tool_source,
             mcp_exa_url,
             mcp_remote_cmd,
             mcp_remote_args,
