@@ -1,7 +1,7 @@
 //! ReAct Agent binary: parses CLI message, invokes the library and prints the result.
 
 use clap::Parser;
-use langgraph_cli::{run_with_config, MemoryConfig, Message, RunConfig};
+use langgraph_cli::{run_with_options, Message, RunOptions};
 
 #[derive(Parser, Debug)]
 #[command(name = "langgraph")]
@@ -58,59 +58,42 @@ fn get_message(args: &Args) -> String {
     args.rest.join(" ").trim().to_string()
 }
 
+fn args_to_run_options(args: &Args) -> Result<RunOptions, String> {
+    let tool_choice = match &args.tool_choice {
+        None => None,
+        Some(tc) => Some(tc.parse().map_err(|e: String| e)?),
+    };
+    Ok(RunOptions {
+        temperature: args.temperature,
+        tool_choice,
+        thread_id: args.thread_id.clone(),
+        user_id: args.user_id.clone(),
+        db_path: args.db_path.clone(),
+        mcp_exa: args.mcp_exa,
+        exa_api_key: args.exa_api_key.clone(),
+        mcp_exa_url: args.mcp_exa_url.clone(),
+        ..Default::default()
+    })
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv::dotenv().ok();
     let args = Args::parse();
     let input = get_message(&args);
 
-    let mut config = match RunConfig::from_env() {
-        Ok(c) => c,
+    let options = match args_to_run_options(&args) {
+        Ok(o) => o,
         Err(e) => {
             eprintln!("error: {}", e);
             std::process::exit(1);
         }
     };
-    if let Some(t) = args.temperature {
-        config.temperature = Some(t);
-    }
-    if let Some(ref tc) = args.tool_choice {
-        config.tool_choice = Some(match tc.parse() {
-            Ok(m) => m,
-            Err(e) => {
-                eprintln!("error: {}", e);
-                std::process::exit(1);
-            }
-        });
-    }
-    if args.thread_id.is_some() || args.user_id.is_some() {
-        config.memory = match (args.thread_id, args.user_id) {
-            (Some(tid), Some(uid)) => MemoryConfig::Both {
-                thread_id: tid,
-                user_id: uid,
-            },
-            (Some(tid), None) => MemoryConfig::ShortTerm { thread_id: tid },
-            (None, Some(uid)) => MemoryConfig::LongTerm { user_id: uid },
-            (None, None) => MemoryConfig::NoMemory,
-        };
-    }
-    if args.db_path.is_some() {
-        config.db_path = args.db_path;
-    }
-    if args.mcp_exa {
-        config.use_exa_mcp = true;
-    }
-    if let Some(key) = args.exa_api_key {
-        config.exa_api_key = Some(key);
-    }
-    if let Some(url) = args.mcp_exa_url {
-        config.mcp_exa_url = url;
-    }
 
     println!("User: {}", input);
     println!("---");
 
-    let state = match run_with_config(&config, &input).await {
+    let state = match run_with_options(&input, &options).await {
         Ok(s) => s,
         Err(e) => {
             eprintln!("error: {}", e);
