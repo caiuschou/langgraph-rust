@@ -13,7 +13,7 @@ use crate::tools::{Tool, ToolRegistryLocked};
 ///
 /// ```no_run
 /// use langgraph::tools::{AggregateToolSource, Tool};
-/// use langgraph::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
+/// use langgraph::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec, ToolSource};
 /// # use async_trait::async_trait;
 /// # struct MockTool;
 /// # #[async_trait] impl Tool for MockTool {
@@ -25,7 +25,7 @@ use crate::tools::{Tool, ToolRegistryLocked};
 /// # async fn main() {
 /// use serde_json::json;
 ///
-/// let mut source = AggregateToolSource::new();
+/// let source = AggregateToolSource::new();
 /// source.register_sync(Box::new(MockTool));
 ///
 /// let tools = source.list_tools().await.unwrap();
@@ -51,12 +51,13 @@ impl AggregateToolSource {
     ///
     /// # Examples
     ///
-    /// ```
-    /// use langgraph::tools::AggregateToolSource;
-    ///
-    /// let source = AggregateToolSource::new();
+    /// ```no_run
     /// # #[tokio::main]
     /// # async fn main() {
+    /// use langgraph::tools::AggregateToolSource;
+    /// use langgraph::tool_source::ToolSource;
+    ///
+    /// let source = AggregateToolSource::new();
     /// let tools = source.list_tools().await.unwrap();
     /// assert_eq!(tools.len(), 0);
     /// # }

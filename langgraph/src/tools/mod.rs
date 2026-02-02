@@ -1,6 +1,6 @@
 mod aggregate_source;
 mod conversation;
-mod memory;
+pub mod memory;
 #[cfg(feature = "mcp")]
 mod mcp_adapter;
 mod registry;

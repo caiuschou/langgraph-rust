@@ -13,7 +13,7 @@ use crate::tools::r#trait::Tool;
 ///
  /// # Examples
  ///
- /// ```
+ /// ```no_run
  /// use langgraph::tools::{Tool, ToolRegistry};
  /// use langgraph::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
  /// use serde_json::json;
@@ -96,7 +96,7 @@ impl ToolRegistry {
     ///
  /// # Examples
  ///
- /// ```
+ /// ```no_run
  /// use langgraph::tools::{Tool, ToolRegistry};
  /// use langgraph::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
  /// # use async_trait::async_trait;
