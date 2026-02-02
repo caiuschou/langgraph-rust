@@ -17,7 +17,7 @@ pub const TOOL_SEARCH_MEMORIES: &str = "search_memories";
 /// # Examples
 ///
 /// ```no_run
-/// use langgraph::tools::memory::{RememberTool, SearchMemoriesTool};
+/// use langgraph::tools::{RememberTool, SearchMemoriesTool, Tool};
 /// use langgraph::memory::{InMemoryStore, Namespace};
 /// use std::sync::Arc;
 /// use serde_json::json;

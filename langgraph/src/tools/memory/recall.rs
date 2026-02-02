@@ -17,7 +17,7 @@ pub const TOOL_RECALL: &str = "recall";
 /// # Examples
 ///
 /// ```no_run
-/// use langgraph::tools::memory::{RememberTool, RecallTool};
+/// use langgraph::tools::{RecallTool, RememberTool, Tool};
 /// use langgraph::memory::{InMemoryStore, Namespace};
 /// use std::sync::Arc;
 /// use serde_json::json;

@@ -17,7 +17,7 @@ pub const TOOL_REMEMBER: &str = "remember";
 /// # Examples
 ///
 /// ```no_run
-/// use langgraph::tools::memory::RememberTool;
+/// use langgraph::tools::{RememberTool, Tool};
 /// use langgraph::memory::{InMemoryStore, Namespace};
 /// use std::sync::Arc;
 /// use serde_json::json;

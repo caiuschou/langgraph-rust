@@ -17,7 +17,7 @@ pub const TOOL_LIST_MEMORIES: &str = "list_memories";
 /// # Examples
 ///
 /// ```no_run
-/// use langgraph::tools::memory::{RememberTool, ListMemoriesTool};
+/// use langgraph::tools::{ListMemoriesTool, RememberTool, Tool};
 /// use langgraph::memory::{InMemoryStore, Namespace};
 /// use std::sync::Arc;
 /// use serde_json::json;
