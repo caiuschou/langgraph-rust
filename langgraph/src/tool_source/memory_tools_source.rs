@@ -1,78 +1,100 @@
 //! Composite tool source: long-term (Store) + short-term (get_recent_messages) in one.
 //!
-//! Merges `list_tools` from both; dispatches `call_tool` by name; forwards
-//! `set_call_context` to the short-term source. See `idea/memory-tools-design.md` §7.5.
+//! Uses AggregateToolSource internally to combine memory and conversation tools.
+//! Forwards `set_call_context` to the underlying source for get_recent_messages.
+//! See `docs/rust-langgraph/tools-refactor/overview.md` §7.5.
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use serde_json::Value;
 
 use crate::memory::{Namespace, Store};
-use crate::tool_source::{
-    ShortTermMemoryToolSource, StoreToolSource, ToolCallContent, ToolCallContext, ToolSource,
-    ToolSourceError, ToolSpec, TOOL_GET_RECENT_MESSAGES,
+use crate::tool_source::{ToolSource, ToolSourceError};
+use crate::tools::{
+    AggregateToolSource, GetRecentMessagesTool, ListMemoriesTool, RecallTool, RememberTool,
+    SearchMemoriesTool,
 };
 
 /// Composite tool source that exposes both long-term (Store) and short-term (recent messages) memory tools.
 ///
-/// Holds `StoreToolSource` and `ShortTermMemoryToolSource`; `list_tools` returns all 5 tools;
-/// `call_tool` dispatches by name; `set_call_context` is forwarded only to the short-term source
-/// so that `get_recent_messages` receives current-step messages from ActNode.
+/// Uses AggregateToolSource internally to register all memory tools and the conversation tool.
+/// `list_tools` returns all 5 tools; `call_tool` delegates to the registry;
+/// `set_call_context` stores context for get_recent_messages to use.
 ///
 /// **Interaction**: Use with `ActNode::new(Box::new(MemoryToolsSource::new(store, namespace)))`
 /// when you want both remember/recall/search_memories/list_memories and get_recent_messages.
 pub struct MemoryToolsSource {
-    store_tools: StoreToolSource,
-    short_term: ShortTermMemoryToolSource,
+    _source: AggregateToolSource,
 }
 
 impl MemoryToolsSource {
     /// Creates a composite with both long-term (store + namespace) and short-term memory tools.
-    pub fn new(store: Arc<dyn Store>, namespace: Namespace) -> Self {
-        Self {
-            store_tools: StoreToolSource::new(store, namespace),
-            short_term: ShortTermMemoryToolSource::new(),
-        }
-    }
+    ///
+    /// Returns an AggregateToolSource that you can use directly with ActNode.
+    /// Note: This function is async and must be awaited.
+    ///
+    /// # Parameters
+    ///
+    /// - `store`: Arc<dyn Store> for long-term memory operations
+    /// - `namespace`: Namespace to isolate storage (e.g., [user_id])
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use langgraph::tool_source::MemoryToolsSource;
+    /// use langgraph::memory::{InMemoryStore, Namespace};
+    /// use std::sync::Arc;
+    /// # #[tokio::main]
+    /// # async fn main() {
+    /// let store = Arc::new(InMemoryStore::new());
+    /// let namespace = vec!["user-123".to_string()];
+    /// let source = MemoryToolsSource::new(store, namespace).await;
+    /// # }
+    /// ```
+    #[allow(clippy::new_ret_no_self)]
+    pub async fn new(store: Arc<dyn Store>, namespace: Namespace) -> AggregateToolSource {
+        let source = AggregateToolSource::new();
 
-    /// Returns which tool source owns the given tool name (store vs short-term).
-    fn which(&self, name: &str) -> bool {
-        name == TOOL_GET_RECENT_MESSAGES
+        let remember = RememberTool::new(store.clone(), namespace.clone());
+        let recall = RecallTool::new(store.clone(), namespace.clone());
+        let search = SearchMemoriesTool::new(store.clone(), namespace.clone());
+        let list = ListMemoriesTool::new(store, namespace);
+        let get_recent = GetRecentMessagesTool::new();
+
+        source.register_sync(Box::new(remember));
+        source.register_sync(Box::new(recall));
+        source.register_sync(Box::new(search));
+        source.register_sync(Box::new(list));
+        source.register_sync(Box::new(get_recent));
+
+        source
     }
 }
 
 #[async_trait]
 impl ToolSource for MemoryToolsSource {
-    async fn list_tools(&self) -> Result<Vec<ToolSpec>, ToolSourceError> {
-        let mut tools = self.store_tools.list_tools().await?;
-        let short = self.short_term.list_tools().await?;
-        tools.extend(short);
-        Ok(tools)
+    async fn list_tools(&self) -> Result<Vec<crate::tool_source::ToolSpec>, ToolSourceError> {
+        self._source.list_tools().await
     }
 
-    async fn call_tool(&self, name: &str, arguments: Value) -> Result<ToolCallContent, ToolSourceError> {
-        if self.which(name) {
-            self.short_term.call_tool(name, arguments).await
-        } else {
-            self.store_tools.call_tool(name, arguments).await
-        }
+    async fn call_tool(
+        &self,
+        name: &str,
+        arguments: serde_json::Value,
+    ) -> Result<crate::tool_source::ToolCallContent, ToolSourceError> {
+        self._source.call_tool(name, arguments).await
     }
 
     async fn call_tool_with_context(
         &self,
         name: &str,
-        arguments: Value,
-        ctx: Option<&ToolCallContext>,
-    ) -> Result<ToolCallContent, ToolSourceError> {
-        if self.which(name) {
-            self.short_term.call_tool_with_context(name, arguments, ctx).await
-        } else {
-            self.store_tools.call_tool_with_context(name, arguments, ctx).await
-        }
+        arguments: serde_json::Value,
+        ctx: Option<&crate::tool_source::ToolCallContext>,
+    ) -> Result<crate::tool_source::ToolCallContent, ToolSourceError> {
+        self._source.call_tool_with_context(name, arguments, ctx).await
     }
 
-    fn set_call_context(&self, ctx: Option<ToolCallContext>) {
-        self.short_term.set_call_context(ctx);
+    fn set_call_context(&self, ctx: Option<crate::tool_source::ToolCallContext>) {
+        self._source.set_call_context(ctx)
     }
 }

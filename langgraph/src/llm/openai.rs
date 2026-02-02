@@ -13,7 +13,7 @@ use crate::error::AgentError;
 use crate::llm::{LlmClient, LlmResponse};
 use crate::message::Message;
 use crate::state::ToolCall;
-use crate::tool_source::ToolSpec;
+use crate::tool_source::{ToolSource, ToolSourceError, ToolSpec};
 
 use async_openai::{
     config::OpenAIConfig,
@@ -64,6 +64,23 @@ impl ChatOpenAI {
             temperature: None,
             tool_choice: None,
         }
+    }
+
+    /// Build client with tools from the given ToolSource.
+    ///
+    /// Calls `tool_source.list_tools().await` and sets them via `with_tools`.
+    /// Use the same ToolSource for ActNode so the LLM and execution see the same tools
+    /// (e.g. memory + MCP when exa_api_key is set).
+    ///
+    /// **Interaction**: Caller builds a ToolSource (e.g. AggregateToolSource with memory
+    /// and optional MCP); this constructor fetches the full list and enables tool_calls.
+    pub async fn new_with_tool_source(
+        config: OpenAIConfig,
+        model: impl Into<String>,
+        tool_source: &dyn ToolSource,
+    ) -> Result<Self, ToolSourceError> {
+        let tools = tool_source.list_tools().await?;
+        Ok(Self::with_config(config, model).with_tools(tools))
     }
 
     /// Set tools for this completion (enables tool_calls in response).

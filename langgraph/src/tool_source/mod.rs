@@ -4,7 +4,7 @@
 //! ReAct/Agent depends on `ToolSource` instead of a concrete tool registry;
 //! implementations include `MockToolSource` (tests), `StoreToolSource`, `ShortTermMemoryToolSource`, and `McpToolSource` (feature mcp).
 //!
-//! ## Memory tools (idea/memory-tools-design.md)
+//! ## Memory tools (docs/rust-langgraph/tools-refactor/overview.md)
 //!
 //! - **StoreToolSource**: long-term memory as tools (`remember`, `recall`, `search_memories`, `list_memories`).
 //!   Use with `Arc<dyn Store>` and a fixed namespace; pass to `ActNode::new(Box::new(store_tools))`.
@@ -122,7 +122,7 @@ mod tests {
 ///
 /// **Call context**: Tools that need current-step state (e.g. recent messages) receive
 /// it via `set_call_context`; ActNode calls it before each round of tool execution.
-/// Default implementation is no-op. See `idea/memory-tools-design.md` §3.2.
+/// Default implementation is no-op. See `docs/rust-langgraph/tools-refactor/overview.md` §3.2.
 ///
 /// **Interaction**: Used by ThinkNode (list_tools) and ActNode (call_tool, set_call_context).
 #[async_trait]
@@ -141,7 +141,7 @@ pub trait ToolSource: Send + Sync {
     /// Default implementation ignores `ctx` and calls `call_tool(name, arguments)`.
     /// Implementations that need context (e.g. ShortTermMemoryToolSource for get_recent_messages)
     /// override and use `ctx.recent_messages`. ActNode calls this with `Some(&ToolCallContext)`
-    /// so context is explicit and no cross-call state is needed. See idea/memory-tools-design.md §7.2.
+    /// so context is explicit and no cross-call state is needed. See docs/rust-langgraph/tools-refactor/overview.md §7.2.
     async fn call_tool_with_context(
         &self,
         name: &str,

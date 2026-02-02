@@ -2,7 +2,7 @@
 //!
 //! Used by short-term memory tools (e.g. `get_recent_messages`) that need access to
 //! the current conversation. ActNode sets this via `ToolSource::set_call_context` before
-//! executing tool calls. See `idea/memory-tools-design.md` §3.2.
+//! executing tool calls. See `docs/rust-langgraph/tools-refactor/overview.md` §3.2.
 
 use crate::message::Message;
 

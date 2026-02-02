@@ -76,6 +76,7 @@ pub mod message;
 pub mod react;
 pub mod state;
 pub mod tool_source;
+pub mod tools;
 pub mod traits;
 
 pub use error::AgentError;
@@ -102,6 +103,8 @@ pub use react::{ActNode, ObserveNode, ThinkNode, REACT_SYSTEM_PROMPT};
 pub use state::{ReActState, ToolCall, ToolResult};
 #[cfg(feature = "mcp")]
 pub use tool_source::McpToolSource;
+#[cfg(feature = "mcp")]
+pub use tools::{register_mcp_tools, McpToolAdapter};
 pub use tool_source::{
     MemoryToolsSource, MockToolSource, ShortTermMemoryToolSource, StoreToolSource, ToolCallContent,
     ToolCallContext, ToolSource, ToolSourceError, ToolSpec, TOOL_GET_RECENT_MESSAGES,

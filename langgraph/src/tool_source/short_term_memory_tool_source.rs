@@ -1,113 +1,83 @@
 //! Short-term memory tool source: get_recent_messages from current step context.
 //!
 //! Uses `ToolCallContext` (injected by ActNode via `set_call_context`) to return
-//! the last N messages. See `idea/memory-tools-design.md` §3.3.
+//! last N messages. Uses AggregateToolSource internally to register get_recent_messages tool.
+//! See `docs/rust-langgraph/tools-refactor/overview.md` §3.3.
 
 use std::sync::RwLock;
 
 use async_trait::async_trait;
-use serde_json::{json, Value};
 
-use crate::message::Message;
-use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSource, ToolSourceError, ToolSpec};
+use crate::tool_source::{ToolSource, ToolSourceError};
+use crate::tools::{AggregateToolSource, GetRecentMessagesTool};
 
-/// Tool name: get recent messages from the current conversation.
+/// Tool name: get recent messages from current conversation.
 pub const TOOL_GET_RECENT_MESSAGES: &str = "get_recent_messages";
-
-fn get_recent_messages_spec() -> ToolSpec {
-    ToolSpec {
-        name: TOOL_GET_RECENT_MESSAGES.to_string(),
-        description: Some(
-            "(Optional) Get the last N messages from the current conversation. Use only when you need \
-             to explicitly re-read or summarize recent turns (e.g. when prompt does not include full history). \
-             Most ReAct flows can omit this tool.".to_string(),
-        ),
-        input_schema: json!({
-            "type": "object",
-            "properties": {
-                "limit": { "type": "integer", "description": "Max number of messages to return (optional)" }
-            }
-        }),
-    }
-}
 
 /// Tool source that exposes current-step messages as one tool: get_recent_messages.
 ///
-/// Holds `RwLock<Option<ToolCallContext>>`; ActNode calls `set_call_context` before
-/// tool execution so that `call_tool("get_recent_messages", args)` can read
-/// `recent_messages` and return the last `limit` as JSON (role + content).
-/// See `idea/memory-tools-design.md` §3.3.
+/// Uses AggregateToolSource internally to register GetRecentMessagesTool. Stores context in
+/// RwLock<Option<ToolCallContext>>; ActNode calls `set_call_context` before tool execution.
+/// See `docs/rust-langgraph/tools-refactor/overview.md` §3.3.
 pub struct ShortTermMemoryToolSource {
-    context: RwLock<Option<ToolCallContext>>,
+    context: RwLock<Option<crate::tool_source::ToolCallContext>>,
+    _source: AggregateToolSource,
 }
 
 impl ShortTermMemoryToolSource {
     /// Creates a short-term memory tool source.
-    pub fn new() -> Self {
-        Self {
-            context: RwLock::new(None),
-        }
-    }
-
-    fn message_to_json(m: &Message) -> Value {
-        let (role, content) = match m {
-            Message::System(s) => ("system", s.as_str()),
-            Message::User(s) => ("user", s.as_str()),
-            Message::Assistant(s) => ("assistant", s.as_str()),
-        };
-        json!({ "role": role, "content": content })
+    ///
+    /// Returns an AggregateToolSource that you can use directly with ActNode.
+    /// Note: This function is async and must be awaited.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use langgraph::tool_source::ShortTermMemoryToolSource;
+    /// # #[tokio::main]
+    /// # async fn main() {
+    /// let source = ShortTermMemoryToolSource::new().await;
+    /// # }
+    /// ```
+    #[allow(clippy::new_ret_no_self)]
+    pub async fn new() -> AggregateToolSource {
+        let source = AggregateToolSource::new();
+        source.register_sync(Box::new(GetRecentMessagesTool::new()));
+        source
     }
 }
 
-impl Default for ShortTermMemoryToolSource {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+
 
 #[async_trait]
 impl ToolSource for ShortTermMemoryToolSource {
-    async fn list_tools(&self) -> Result<Vec<ToolSpec>, ToolSourceError> {
-        Ok(vec![get_recent_messages_spec()])
+    async fn list_tools(&self) -> Result<Vec<crate::tool_source::ToolSpec>, ToolSourceError> {
+        self._source.list_tools().await
     }
 
-    async fn call_tool(&self, name: &str, arguments: Value) -> Result<ToolCallContent, ToolSourceError> {
-        self.call_tool_with_context(name, arguments, None).await
+    async fn call_tool(
+        &self,
+        name: &str,
+        arguments: serde_json::Value,
+    ) -> Result<crate::tool_source::ToolCallContent, ToolSourceError> {
+        self._source.call_tool(name, arguments).await
     }
 
     async fn call_tool_with_context(
         &self,
         name: &str,
-        arguments: Value,
-        ctx: Option<&ToolCallContext>,
-    ) -> Result<ToolCallContent, ToolSourceError> {
-        if name != TOOL_GET_RECENT_MESSAGES {
-            return Err(ToolSourceError::NotFound(name.to_string()));
-        }
-        let limit = arguments
-            .get("limit")
-            .and_then(|v| v.as_u64())
-            .map(|n| n as usize);
-        let messages_vec: Vec<Message> = match ctx {
-            Some(c) => c.recent_messages.clone(),
-            None => {
-                let guard = self
-                    .context
-                    .read()
-                    .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
-                guard.as_ref().map(|c| c.recent_messages.clone()).unwrap_or_default()
+        arguments: serde_json::Value,
+        ctx: Option<&crate::tool_source::ToolCallContext>,
+    ) -> Result<crate::tool_source::ToolCallContent, ToolSourceError> {
+        if let Some(c) = ctx {
+            if let Ok(mut g) = self.context.write() {
+                *g = Some(c.clone());
             }
-        };
-        let messages = messages_vec.as_slice();
-        let take = limit.unwrap_or(messages.len());
-        let start = messages.len().saturating_sub(take);
-        let slice = &messages[start..];
-        let arr: Vec<Value> = slice.iter().map(Self::message_to_json).collect();
-        let text = serde_json::to_string(&arr).map_err(|e| ToolSourceError::InvalidInput(e.to_string()))?;
-        Ok(ToolCallContent { text })
+        }
+        self._source.call_tool_with_context(name, arguments, ctx).await
     }
 
-    fn set_call_context(&self, ctx: Option<ToolCallContext>) {
+    fn set_call_context(&self, ctx: Option<crate::tool_source::ToolCallContext>) {
         if let Ok(mut g) = self.context.write() {
             *g = ctx;
         }

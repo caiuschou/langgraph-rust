@@ -11,6 +11,7 @@ path = "src/lib.rs"
 
 [features]
 default = ["mcp", "sqlite", "in-memory-vector"]
+# MCP tool source (default on); use --no-default-features to disable
 mcp = ["dep:mcp_client", "dep:mcp_core"]
 # OpenAI-compatible API via async-openai
 openai = ["dep:async-openai", "dep:dotenv"]
