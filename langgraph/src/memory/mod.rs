@@ -35,15 +35,18 @@
 //! |------------------|-------------|-----------------------------|----------|
 //! | [`InMemoryStore`] | In-memory   | String filter (key/value)   | —        |
 //! | [`SqliteStore`]   | SQLite file | String filter               | `sqlite` |
-//! | `LanceStore`      | LanceDB     | Vector similarity (semantic)| `lance`  |
+//! | [`LanceStore`]      | LanceDB     | Vector similarity (semantic)| `lance`  |
+//! | [`InMemoryVectorStore`] | In-memory | Vector similarity (semantic) | `in-memory-vector` |
 //!
-//! `LanceStore` (feature `lance`) requires an `Embedder` for vector indexing; search with `query` uses semantic similarity.
+//! `LanceStore` and `InMemoryVectorStore` require an `Embedder` for vector indexing; search with `query` uses semantic similarity.
 
 mod checkpoint;
 mod checkpointer;
 mod config;
-#[cfg(feature = "lance")]
+#[cfg(any(feature = "lance", feature = "in-memory-vector"))]
 mod embedder;
+#[cfg(feature = "in-memory-vector")]
+mod in_memory_vector_store;
 mod in_memory_store;
 mod memory_saver;
 #[cfg(all(feature = "lance", feature = "openai"))]
@@ -66,8 +69,10 @@ pub use memory_saver::MemorySaver;
 pub use serializer::{JsonSerializer, Serializer};
 pub use store::{Namespace, Store, StoreError, StoreSearchHit};
 
-#[cfg(feature = "lance")]
+#[cfg(any(feature = "lance", feature = "in-memory-vector"))]
 pub use embedder::Embedder;
+#[cfg(feature = "in-memory-vector")]
+pub use in_memory_vector_store::InMemoryVectorStore;
 #[cfg(feature = "lance")]
 pub use lance_store::LanceStore;
 #[cfg(all(feature = "lance", feature = "openai"))]
