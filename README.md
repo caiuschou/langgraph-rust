@@ -38,6 +38,7 @@ async-trait = "0.1"
 
 - `mcp` (default): Enable MCP tool source for external tools
 - `sqlite` (default): Enable SQLite-based checkpointing and storage
+- `in-memory-vector` (default): Enable in-memory vector store with semantic search
 - `openai`: Enable OpenAI-compatible chat (e.g., OpenAI) via `async-openai`
 - `lance`: Enable LanceDB vector store for long-term memory
 
@@ -499,9 +500,12 @@ let result2 = compiled.invoke(result, Some(config)).await?;
 - Optional semantic search via LanceDB vector store
 
 **Implementations**:
+- `MemorySaver` - In-memory (dev/tests)
+- `SqliteSaver` - Persistent SQLite file (production)
 - `InMemoryStore` - In-memory (dev/tests)
 - `SqliteStore` - Persistent SQLite file (key-value search)
 - `LanceStore` - Persistent LanceDB vector store (semantic search)
+- `InMemoryVectorStore` - In-memory vector store with semantic search (feature: `in-memory-vector`)
 
 ```rust
 use langgraph::memory::{InMemoryStore, Namespace, Store, StoreError};
@@ -520,9 +524,32 @@ assert_eq!(theme, Some("dark".to_string()));
 let items = store.list(&ns).await?;
 ```
 
-#### Semantic Search with LanceDB
+#### Semantic Search
 
-Vector-based semantic search for retrieving relevant memories:
+Vector-based semantic search for retrieving relevant memories.
+
+**With InMemoryVectorStore (dev/tests):**
+
+```rust
+use langgraph::memory::{InMemoryVectorStore, Namespace, Store, Embedder};
+use std::sync::Arc;
+
+let embedder = Arc::new(MockEmbedder::new(1536));
+let store = InMemoryVectorStore::new(embedder);
+let ns = Namespace::new(&["user-123", "memories"]);
+
+// Store memories (automatically embedded)
+store.put(&ns, "doc-1", "User likes Rust and enjoys hiking").await?;
+
+// Semantic search
+let results = store.search(
+    &ns,
+    Some("outdoor activities"),  // semantic query
+    Some(10),                    // limit
+).await?;
+```
+
+**With LanceDB (production):**
 
 ```rust
 use langgraph::memory::{LanceStore, Namespace, Store, Embedder};
@@ -562,7 +589,8 @@ let results = store.search(
 | Time-travel / branching | Short-term (Checkpointer) |
 | User preferences | Long-term (Store) |
 | Facts / documents | Long-term (Store) |
-| Semantic search | Long-term (LanceStore) |
+| Semantic search (dev/tests) | In-memory (InMemoryVectorStore) |
+| Semantic search (production) | Long-term (LanceStore) |
 
 #### Combining Both
 
