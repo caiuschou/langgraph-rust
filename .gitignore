@@ -6,6 +6,7 @@ idea/
 lancedb_data/
 
 # Cargo
+.cargo/
 /target
 **/*.rs.bk
 Cargo.lock
