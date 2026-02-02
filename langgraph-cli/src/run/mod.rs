@@ -1,28 +1,21 @@
-//! Run entry points: run with default config or run_with_config.
+//! Run entry points: run with default config, run_with_config, or run_with_options.
 //!
-//! Re-exports [`run`], [`run_with_config`] and [`Error`].
+//! Re-exports [`run`], [`run_with_config`], [`run_with_options`] and [`Error`].
 
 pub use crate::config::Error;
 
 mod common;
-
-#[cfg(feature = "sqlite")]
-mod run_with_config_sqlite;
-#[cfg(not(feature = "sqlite"))]
-mod run_with_config_no_sqlite;
+mod run_with_config;
 
 use langgraph::ReActState;
 
-use crate::config::RunConfig;
+use crate::config::{RunConfig, RunOptions};
 
 /// Re-exported for tests that inject MockLlm/MockToolSource.
 #[cfg(test)]
 pub(crate) use common::run_react_graph;
 
-#[cfg(feature = "sqlite")]
-pub use run_with_config_sqlite::run_with_config;
-#[cfg(not(feature = "sqlite"))]
-pub use run_with_config_no_sqlite::run_with_config;
+pub use run_with_config::run_with_config;
 
 /// Run ReAct graph with default config (from .env), returns final state.
 ///
@@ -30,5 +23,21 @@ pub use run_with_config_no_sqlite::run_with_config;
 pub async fn run(user_message: &str) -> Result<ReActState, Error> {
     dotenv::dotenv().ok();
     let config = RunConfig::from_env()?;
+    run_with_config(&config, user_message).await
+}
+
+/// Run ReAct graph with config from env and optional overrides (e.g. from CLI or programmatic).
+///
+/// Loads `.env`, builds `RunConfig` from env, applies `options`, then runs the graph.
+/// Use this when you have overrides (temperature, tool_choice, memory, db_path, Exa MCP)
+/// without parsing CLI. Interacts with [`RunConfig::apply_options`](crate::RunConfig::apply_options)
+/// and [`run_with_config`](run_with_config).
+pub async fn run_with_options(
+    user_message: &str,
+    options: &RunOptions,
+) -> Result<ReActState, Error> {
+    dotenv::dotenv().ok();
+    let mut config = RunConfig::from_env()?;
+    config.apply_options(options);
     run_with_config(&config, user_message).await
 }
