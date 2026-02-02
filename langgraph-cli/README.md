@@ -184,11 +184,8 @@ use langgraph_cli::RunConfig;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let config = RunConfig {
-        use_exa_mcp: true,
-        exa_api_key: Some("your-exa-api-key".to_string()),
-        ..RunConfig::from_env()?
-    };
+    let mut config = RunConfig::from_env()?;
+    config.tool_source.exa_api_key = Some("your-exa-api-key".to_string());
     
     let state = langgraph_cli::run_with_config(&config, "Search for latest Rust news").await?;
     Ok(())

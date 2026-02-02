@@ -15,23 +15,19 @@ name = "langgraph"
 path = "src/main.rs"
 
 [features]
-default = ["openai", "sqlite", "mcp"]
+default = ["openai"]
 # Use real OpenAI (reads OPENAI_API_BASE, OPENAI_API_KEY, OPENAI_MODEL from .env)
 openai = ["langgraph/openai", "dep:dotenv", "dep:async-openai"]
 # Add embeddings support for vector search
 embedding = ["langgraph/lance", "langgraph/openai"]
-# Add SQLite support for checkpointer and store
-sqlite = ["langgraph/sqlite", "dep:sqlx", "dep:chrono"]
-# MCP support for external tools (e.g., Exa web search); default on
-mcp = ["langgraph/mcp"]
 
 [dependencies]
 async-trait = { workspace = true }
-langgraph = { path = "../langgraph", features = ["openai"] }
+langgraph = { path = "../langgraph", features = ["openai", "sqlite", "mcp"] }
 tokio = { workspace = true }
 clap = { workspace = true }
 dotenv = { version = "0.15", optional = true }
 async-openai = { version = "0.32", optional = true, features = ["chat-completion"] }
-sqlx = { version = "0.8", features = ["sqlite"], optional = true }
-chrono = { version = "0.4", optional = true }
+sqlx = { version = "0.8", features = ["sqlite"] }
+chrono = { version = "0.4" }
 serde_json = "1"
