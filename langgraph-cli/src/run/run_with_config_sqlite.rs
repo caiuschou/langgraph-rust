@@ -1,15 +1,14 @@
 //! Run ReAct graph with given config (SQLite feature enabled); does not read .env, returns final state.
 //!
 //! Uses checkpointer and store when thread_id/user_id are set.
-//! Interacts with [`RunConfig`](crate::config::RunConfig),
-//! [`StoreToolSource`](langgraph::StoreToolSource),
-//! [`run_react_graph`](super::common::run_react_graph).
+//! Builds a single AggregateToolSource: memory when user_id+store, MCP (Exa) when
+//! use_exa_mcp and exa_api_key are set. See docs/rust-langgraph/tools-refactor/architecture/common-interface-mcp.md.
 
 use std::sync::Arc;
 
 use async_openai::config::OpenAIConfig;
 use langgraph::{
-    ChatOpenAI, MockToolSource, RunnableConfig, SqliteSaver, SqliteStore, StoreToolSource,
+    ChatOpenAI, MemoryToolsSource, MockToolSource, RunnableConfig, SqliteSaver, SqliteStore,
     ToolSource,
 };
 
@@ -43,55 +42,58 @@ pub async fn run_with_config(
         None
     };
 
-    let tool_source: Box<dyn ToolSource> = if config.use_exa_mcp {
-        #[cfg(feature = "mcp")]
-        {
-            let args: Vec<String> = config
-                .mcp_remote_args
-                .split_whitespace()
-                .map(String::from)
-                .collect();
-            let mut args = args;
-            if !args
-                .iter()
-                .any(|a| a == &config.mcp_exa_url || a.contains("mcp.exa.ai"))
+    let has_memory = config.user_id().is_some() && store.is_some();
+    let has_exa = config.use_exa_mcp && config.exa_api_key.is_some();
+
+    let tool_source: Box<dyn ToolSource> = if !has_memory && !has_exa {
+        Box::new(MockToolSource::get_time_example())
+    } else {
+        let aggregate = if has_memory {
+            let user_id = config.user_id().unwrap();
+            let s = store.as_ref().unwrap();
+            let namespace = vec![user_id.to_string(), "memories".to_string()];
+            MemoryToolsSource::new(s.clone(), namespace).await
+        } else {
+            langgraph::tools::AggregateToolSource::new()
+        };
+        if has_exa {
+            #[cfg(feature = "mcp")]
             {
-                args.push(config.mcp_exa_url.clone());
-            }
-            if let Some(ref key) = config.exa_api_key {
+                let args: Vec<String> = config
+                    .mcp_remote_args
+                    .split_whitespace()
+                    .map(String::from)
+                    .collect();
+                let mut args = args;
+                if !args
+                    .iter()
+                    .any(|a| a == &config.mcp_exa_url || a.contains("mcp.exa.ai"))
+                {
+                    args.push(config.mcp_exa_url.clone());
+                }
+                let key = config.exa_api_key.as_ref().unwrap();
                 let mut env = vec![("EXA_API_KEY".to_string(), key.clone())];
                 if let Ok(home) = std::env::var("HOME") {
                     env.push(("HOME".to_string(), home));
                 }
-                Box::new(langgraph::McpToolSource::new_with_env(
+                let mcp = langgraph::McpToolSource::new_with_env(
                     config.mcp_remote_cmd.clone(),
                     args,
                     env,
-                )?)
-            } else {
-                Box::new(langgraph::McpToolSource::new(
-                    config.mcp_remote_cmd.clone(),
-                    args,
-                )?)
+                )?;
+                langgraph::register_mcp_tools(&aggregate, Arc::new(mcp)).await?;
+            }
+            #[cfg(not(feature = "mcp"))]
+            {
+                return Err("MCP feature is not enabled. Build with --features mcp".into());
             }
         }
-        #[cfg(not(feature = "mcp"))]
-        {
-            return Err("MCP feature is not enabled. Build with --features mcp".into());
-        }
-    } else if let Some(user_id) = config.user_id() {
-        if let Some(s) = &store {
-            let namespace = vec![user_id.to_string(), "memories".to_string()];
-            Box::new(StoreToolSource::new(s.clone(), namespace))
-        } else {
-            Box::new(MockToolSource::get_time_example())
-        }
-    } else {
-        Box::new(MockToolSource::get_time_example())
+        Box::new(aggregate)
     };
 
-    let tools = tool_source.list_tools().await?;
-    let mut llm = ChatOpenAI::with_config(openai_config, config.model.clone()).with_tools(tools);
+    let mut llm =
+        ChatOpenAI::new_with_tool_source(openai_config, config.model.clone(), tool_source.as_ref())
+            .await?;
     if let Some(t) = config.temperature {
         llm = llm.with_temperature(t);
     }

@@ -22,7 +22,7 @@ openai = ["langgraph/openai", "dep:dotenv", "dep:async-openai"]
 embedding = ["langgraph/lance", "langgraph/openai"]
 # Add SQLite support for checkpointer and store
 sqlite = ["langgraph/sqlite", "dep:sqlx", "dep:chrono"]
-# Add MCP support for external tools (e.g., Exa web search)
+# MCP support for external tools (e.g., Exa web search); default on
 mcp = ["langgraph/mcp"]
 
 [dependencies]
