@@ -4,7 +4,10 @@
 //! returns not found; list_memories / search_memories behavior. See docs/rust-langgraph/tools-refactor §6.
 
 use langgraph::memory::{InMemoryStore, Store};
-use langgraph::tool_source::{StoreToolSource, ToolSource, TOOL_LIST_MEMORIES, TOOL_RECALL, TOOL_REMEMBER, TOOL_SEARCH_MEMORIES};
+use langgraph::tool_source::{
+    StoreToolSource, ToolSource, TOOL_LIST_MEMORIES, TOOL_RECALL, TOOL_REMEMBER,
+    TOOL_SEARCH_MEMORIES,
+};
 use serde_json::json;
 use std::sync::Arc;
 
@@ -29,12 +32,18 @@ async fn store_tool_source_remember_recall_consistent() {
     let source = StoreToolSource::new(store, ns).await;
 
     let r = source
-        .call_tool(TOOL_REMEMBER, json!({ "key": "pref", "value": "dark mode" }))
+        .call_tool(
+            TOOL_REMEMBER,
+            json!({ "key": "pref", "value": "dark mode" }),
+        )
         .await
         .unwrap();
     assert_eq!(r.text, "ok");
 
-    let r = source.call_tool(TOOL_RECALL, json!({ "key": "pref" })).await.unwrap();
+    let r = source
+        .call_tool(TOOL_RECALL, json!({ "key": "pref" }))
+        .await
+        .unwrap();
     assert_eq!(r.text, "\"dark mode\"");
 }
 
@@ -44,7 +53,10 @@ async fn store_tool_source_recall_missing_key_returns_not_found() {
     let ns = vec!["memories".to_string()];
     let source = StoreToolSource::new(store, ns).await;
 
-    let err = source.call_tool(TOOL_RECALL, json!({ "key": "nonexistent" })).await.unwrap_err();
+    let err = source
+        .call_tool(TOOL_RECALL, json!({ "key": "nonexistent" }))
+        .await
+        .unwrap_err();
     let msg = err.to_string();
     assert!(msg.contains("not found") || msg.contains("NotFound"));
 }
@@ -64,7 +76,10 @@ async fn store_tool_source_list_memories_returns_keys() {
         .await
         .unwrap();
 
-    let r = source.call_tool(TOOL_LIST_MEMORIES, json!({})).await.unwrap();
+    let r = source
+        .call_tool(TOOL_LIST_MEMORIES, json!({}))
+        .await
+        .unwrap();
     let keys: Vec<String> = serde_json::from_str(&r.text).unwrap();
     assert!(keys.contains(&"a".to_string()));
     assert!(keys.contains(&"b".to_string()));
@@ -86,7 +101,10 @@ async fn store_tool_source_search_memories_returns_hits() {
         .unwrap();
 
     let r = source
-        .call_tool(TOOL_SEARCH_MEMORIES, json!({ "query": "fruit", "limit": 5 }))
+        .call_tool(
+            TOOL_SEARCH_MEMORIES,
+            json!({ "query": "fruit", "limit": 5 }),
+        )
         .await
         .unwrap();
     let hits: Vec<serde_json::Value> = serde_json::from_str(&r.text).unwrap();

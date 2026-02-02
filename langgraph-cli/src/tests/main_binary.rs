@@ -21,7 +21,11 @@ fn main_exits_zero_with_help() {
         ])
         .status();
     let status = status.expect("failed to run cargo");
-    assert!(status.success(), "expected --help to exit 0, got {}", status);
+    assert!(
+        status.success(),
+        "expected --help to exit 0, got {}",
+        status
+    );
 }
 
 /// **Scenario**: Running the binary with an invalid argument yields non-zero exit or error output.

@@ -4,7 +4,9 @@
 //! returns corresponding messages; with limit returns last N. See docs/rust-langgraph/tools-refactor §6.
 
 use langgraph::message::Message;
-use langgraph::tool_source::{ShortTermMemoryToolSource, ToolCallContext, ToolSource, TOOL_GET_RECENT_MESSAGES};
+use langgraph::tool_source::{
+    ShortTermMemoryToolSource, ToolCallContext, ToolSource, TOOL_GET_RECENT_MESSAGES,
+};
 use serde_json::json;
 
 #[tokio::test]
@@ -18,27 +20,36 @@ async fn short_term_memory_list_tools_returns_get_recent_messages() {
 #[tokio::test]
 async fn short_term_memory_without_context_returns_empty_array() {
     let source = ShortTermMemoryToolSource::new().await;
-    let r = source.call_tool(TOOL_GET_RECENT_MESSAGES, json!({})).await.unwrap();
+    let r = source
+        .call_tool(TOOL_GET_RECENT_MESSAGES, json!({}))
+        .await
+        .unwrap();
     assert_eq!(r.text, "[]");
 }
 
 #[tokio::test]
 async fn short_term_memory_with_context_returns_messages() {
     let source = ShortTermMemoryToolSource::new().await;
-    let messages = vec![
-        Message::user("hello"),
-        Message::assistant("hi"),
-    ];
+    let messages = vec![Message::user("hello"), Message::assistant("hi")];
     source.set_call_context(Some(ToolCallContext {
         recent_messages: messages,
     }));
 
-    let r = source.call_tool(TOOL_GET_RECENT_MESSAGES, json!({})).await.unwrap();
+    let r = source
+        .call_tool(TOOL_GET_RECENT_MESSAGES, json!({}))
+        .await
+        .unwrap();
     let arr: Vec<serde_json::Value> = serde_json::from_str(&r.text).unwrap();
     assert_eq!(arr.len(), 2);
     assert_eq!(arr[0].get("role").and_then(|v| v.as_str()), Some("user"));
-    assert_eq!(arr[0].get("content").and_then(|v| v.as_str()), Some("hello"));
-    assert_eq!(arr[1].get("role").and_then(|v| v.as_str()), Some("assistant"));
+    assert_eq!(
+        arr[0].get("content").and_then(|v| v.as_str()),
+        Some("hello")
+    );
+    assert_eq!(
+        arr[1].get("role").and_then(|v| v.as_str()),
+        Some("assistant")
+    );
     assert_eq!(arr[1].get("content").and_then(|v| v.as_str()), Some("hi"));
 }
 

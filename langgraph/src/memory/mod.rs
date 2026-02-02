@@ -45,9 +45,9 @@ mod checkpointer;
 mod config;
 #[cfg(any(feature = "lance", feature = "in-memory-vector"))]
 mod embedder;
+mod in_memory_store;
 #[cfg(feature = "in-memory-vector")]
 mod in_memory_vector_store;
-mod in_memory_store;
 mod memory_saver;
 #[cfg(all(feature = "lance", feature = "openai"))]
 mod openai_embedder;

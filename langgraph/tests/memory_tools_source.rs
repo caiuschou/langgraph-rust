@@ -3,8 +3,8 @@
 //! Verifies list_tools returns 5 tools; call_tool dispatches to store/short-term;
 //! set_call_context is forwarded so get_recent_messages sees context.
 
-use langgraph::message::Message;
 use langgraph::memory::{InMemoryStore, Store};
+use langgraph::message::Message;
 use langgraph::tool_source::{
     MemoryToolsSource, ToolCallContext, ToolSource, TOOL_GET_RECENT_MESSAGES, TOOL_LIST_MEMORIES,
     TOOL_RECALL, TOOL_REMEMBER,
@@ -38,7 +38,10 @@ async fn memory_tools_source_call_tool_dispatches_to_store() {
         .unwrap();
     assert_eq!(r.text, "ok");
 
-    let r = source.call_tool(TOOL_RECALL, json!({ "key": "k" })).await.unwrap();
+    let r = source
+        .call_tool(TOOL_RECALL, json!({ "key": "k" }))
+        .await
+        .unwrap();
     assert_eq!(r.text, "\"v\"");
 }
 
@@ -52,9 +55,15 @@ async fn memory_tools_source_set_call_context_forwarded_get_recent_messages() {
         recent_messages: vec![Message::user("hi"), Message::assistant("hello")],
     }));
 
-    let r = source.call_tool(TOOL_GET_RECENT_MESSAGES, json!({})).await.unwrap();
+    let r = source
+        .call_tool(TOOL_GET_RECENT_MESSAGES, json!({}))
+        .await
+        .unwrap();
     let arr: Vec<serde_json::Value> = serde_json::from_str(&r.text).unwrap();
-    assert_eq!(arr.len(),2);
+    assert_eq!(arr.len(), 2);
     assert_eq!(arr[0].get("content").and_then(|v| v.as_str()), Some("hi"));
-    assert_eq!(arr[1].get("content").and_then(|v| v.as_str()), Some("hello"));
+    assert_eq!(
+        arr[1].get("content").and_then(|v| v.as_str()),
+        Some("hello")
+    );
 }

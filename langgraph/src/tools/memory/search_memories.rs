@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use serde_json::json;
 
 use crate::memory::{Namespace, Store};
-use crate::tool_source::{ToolCallContent, ToolSourceError, ToolCallContext};
+use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError};
 use crate::tools::Tool;
 
 /// Tool name for the search_memories operation.
@@ -100,10 +100,7 @@ impl Tool for SearchMemoriesTool {
         args: serde_json::Value,
         _ctx: Option<&ToolCallContext>,
     ) -> Result<ToolCallContent, ToolSourceError> {
-        let query = args
-            .get("query")
-            .and_then(|v| v.as_str())
-            .map(String::from);
+        let query = args.get("query").and_then(|v| v.as_str()).map(String::from);
         let limit = args
             .get("limit")
             .and_then(|v| v.as_u64())
@@ -117,13 +114,9 @@ impl Tool for SearchMemoriesTool {
                 crate::memory::StoreError::NotFound => {
                     ToolSourceError::NotFound("key not found".to_string())
                 }
-                crate::memory::StoreError::Serialization(s) => {
-                    ToolSourceError::InvalidInput(s)
-                }
+                crate::memory::StoreError::Serialization(s) => ToolSourceError::InvalidInput(s),
                 crate::memory::StoreError::Storage(s) => ToolSourceError::Transport(s),
-                crate::memory::StoreError::EmbeddingError(s) => {
-                    ToolSourceError::Transport(s)
-                }
+                crate::memory::StoreError::EmbeddingError(s) => ToolSourceError::Transport(s),
             })?;
 
         let arr: Vec<serde_json::Value> = hits

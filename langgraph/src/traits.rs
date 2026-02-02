@@ -5,6 +5,7 @@
 //! When `Agent::State == S`, an agent can be used as a graph `Node<S>` (see blanket impl below).
 
 use async_trait::async_trait;
+use std::fmt::Debug;
 
 use crate::error::AgentError;
 use crate::graph::{Next, Node};
@@ -27,7 +28,7 @@ pub trait Agent: Send + Sync {
 
     /// State type for this agent; **defined by the implementer** (fields and shape).
     /// Must be cloneable and sendable across async boundaries.
-    type State: Clone + Send + Sync + 'static;
+    type State: Clone + Send + Sync + Debug + 'static;
 
     /// One step: receive state, return updated state.
     ///
@@ -43,7 +44,7 @@ pub trait Agent: Send + Sync {
 #[async_trait]
 impl<S, A> Node<S> for A
 where
-    S: Clone + Send + Sync + 'static,
+    S: Clone + Send + Sync + Debug + 'static,
     A: Agent<State = S> + Send + Sync,
 {
     fn id(&self) -> &str {

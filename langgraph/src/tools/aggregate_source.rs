@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::tool_source::{ToolCallContent, ToolSource, ToolSourceError, ToolCallContext};
+use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSource, ToolSourceError};
 use crate::tools::{Tool, ToolRegistryLocked};
 
 /// Aggregates multiple tools and implements ToolSource trait via ToolRegistry.
@@ -74,28 +74,28 @@ impl AggregateToolSource {
     /// Tools are stored in the internal ToolRegistryLocked and can be
     /// listed and called via ToolSource trait methods.
     ///
-/// # Parameters
-///
-/// - `tool`: Box<dyn Tool> to register
-///
-/// # Examples
-///
-/// ```no_run
-/// use langgraph::tools::{AggregateToolSource, Tool};
-/// use langgraph::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
-/// # use async_trait::async_trait;
-/// # struct MockTool;
-/// # #[async_trait] impl Tool for MockTool {
-/// #     fn name(&self) -> &str { "mock" }
-/// #     fn spec(&self) -> ToolSpec { todo!() }
-/// #     async fn call(&self, _: serde_json::Value, _: Option<&ToolCallContext>) -> Result<ToolCallContent, ToolSourceError> { todo!() }
-/// # }
-/// # #[tokio::main]
-/// # async fn main() {
-/// let source = AggregateToolSource::new();
-/// source.register_sync(Box::new(MockTool));
-/// # }
-/// ```
+    /// # Parameters
+    ///
+    /// - `tool`: Box<dyn Tool> to register
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use langgraph::tools::{AggregateToolSource, Tool};
+    /// use langgraph::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
+    /// # use async_trait::async_trait;
+    /// # struct MockTool;
+    /// # #[async_trait] impl Tool for MockTool {
+    /// #     fn name(&self) -> &str { "mock" }
+    /// #     fn spec(&self) -> ToolSpec { todo!() }
+    /// #     async fn call(&self, _: serde_json::Value, _: Option<&ToolCallContext>) -> Result<ToolCallContent, ToolSourceError> { todo!() }
+    /// # }
+    /// # #[tokio::main]
+    /// # async fn main() {
+    /// let source = AggregateToolSource::new();
+    /// source.register_sync(Box::new(MockTool));
+    /// # }
+    /// ```
     pub fn register_sync(&self, tool: Box<dyn Tool>) {
         self.registry.register_sync(tool);
     }
@@ -156,7 +156,8 @@ impl ToolSource for AggregateToolSource {
         name: &str,
         arguments: serde_json::Value,
     ) -> Result<ToolCallContent, ToolSourceError> {
-        let effective_ctx: Option<ToolCallContext> = self.context.read().ok().and_then(|g| g.as_ref().cloned());
+        let effective_ctx: Option<ToolCallContext> =
+            self.context.read().ok().and_then(|g| g.as_ref().cloned());
         let effective_ctx_ref: Option<&ToolCallContext> = effective_ctx.as_ref();
         self.registry.call(name, arguments, effective_ctx_ref).await
     }
@@ -198,7 +199,8 @@ impl ToolSource for AggregateToolSource {
             }
             self.registry.call(name, arguments, ctx).await
         } else {
-            let effective_ctx: Option<ToolCallContext> = self.context.read().ok().and_then(|g| g.as_ref().cloned());
+            let effective_ctx: Option<ToolCallContext> =
+                self.context.read().ok().and_then(|g| g.as_ref().cloned());
             let effective_ctx_ref: Option<&ToolCallContext> = effective_ctx.as_ref();
             self.registry.call(name, arguments, effective_ctx_ref).await
         }

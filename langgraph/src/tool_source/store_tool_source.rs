@@ -9,7 +9,9 @@ use async_trait::async_trait;
 
 use crate::memory::{Namespace, Store};
 use crate::tool_source::{ToolSource, ToolSourceError};
-use crate::tools::{AggregateToolSource, ListMemoriesTool, RecallTool, RememberTool, SearchMemoriesTool};
+use crate::tools::{
+    AggregateToolSource, ListMemoriesTool, RecallTool, RememberTool, SearchMemoriesTool,
+};
 
 /// Tool name: write a key-value pair to long-term memory.
 pub const TOOL_REMEMBER: &str = "remember";
@@ -91,7 +93,9 @@ impl ToolSource for StoreToolSource {
         arguments: serde_json::Value,
         ctx: Option<&crate::tool_source::ToolCallContext>,
     ) -> Result<crate::tool_source::ToolCallContent, ToolSourceError> {
-        self._source.call_tool_with_context(name, arguments, ctx).await
+        self._source
+            .call_tool_with_context(name, arguments, ctx)
+            .await
     }
 
     fn set_call_context(&self, ctx: Option<crate::tool_source::ToolCallContext>) {

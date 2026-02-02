@@ -11,7 +11,11 @@ use crate::common::{AgentState, EchoAgent, FailingAgent};
 #[tokio::test]
 async fn agent_as_node_id_is_name() {
     let agent = EchoAgent::new();
-    assert_eq!(agent.id(), agent.name(), "Node::id() must equal Agent::name()");
+    assert_eq!(
+        agent.id(),
+        agent.name(),
+        "Node::id() must equal Agent::name()"
+    );
     assert_eq!(agent.id(), "echo");
 }
 

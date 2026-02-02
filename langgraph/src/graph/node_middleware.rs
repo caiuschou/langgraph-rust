@@ -4,6 +4,7 @@
 //! `compile_with_middleware` / `compile_with_checkpointer_and_middleware`. See docs/idea/NODE_MIDDLEWARE.md.
 
 use async_trait::async_trait;
+use std::fmt::Debug;
 use std::pin::Pin;
 
 use crate::error::AgentError;
@@ -16,7 +17,7 @@ use super::Next;
 #[async_trait]
 pub trait NodeMiddleware<S>: Send + Sync
 where
-    S: Clone + Send + Sync + 'static,
+    S: Clone + Send + Sync + Debug + 'static,
 {
     /// Wraps node.run: wraps the inner call.
     ///

@@ -1,10 +1,10 @@
-use std::sync::Arc;
 use async_trait::async_trait;
 use dashmap::DashMap;
 use serde_json::Value as JsonValue;
+use std::sync::Arc;
 
-use crate::memory::store::{Namespace, Store, StoreError, StoreSearchHit};
 use crate::memory::embedder::Embedder;
+use crate::memory::store::{Namespace, Store, StoreError, StoreSearchHit};
 
 /// Pure in-memory vector store for semantic search.
 ///
@@ -46,7 +46,8 @@ impl InMemoryVectorStore {
 
     /// Extracts embeddable text from a JSON value.
     fn text_from_value(value: &JsonValue) -> String {
-        value.get("text")
+        value
+            .get("text")
             .and_then(|v| v.as_str())
             .map(String::from)
             .unwrap_or_else(|| value.to_string())
@@ -69,7 +70,11 @@ impl InMemoryVectorStore {
 
     /// Creates a compound key from namespace and key.
     fn make_key(namespace: &Namespace, key: &str) -> String {
-        format!("{}:{}", serde_json::to_string(namespace).unwrap_or_default(), key)
+        format!(
+            "{}:{}",
+            serde_json::to_string(namespace).unwrap_or_default(),
+            key
+        )
     }
 }
 
@@ -100,14 +105,13 @@ impl Store for InMemoryVectorStore {
         Ok(())
     }
 
-    async fn get(
-        &self,
-        namespace: &Namespace,
-        key: &str,
-    ) -> Result<Option<JsonValue>, StoreError> {
+    async fn get(&self, namespace: &Namespace, key: &str) -> Result<Option<JsonValue>, StoreError> {
         let compound_key = Self::make_key(namespace, key);
 
-        Ok(self.data.get(&compound_key).map(|entry| entry.value.clone()))
+        Ok(self
+            .data
+            .get(&compound_key)
+            .map(|entry| entry.value.clone()))
     }
 
     async fn list(&self, namespace: &Namespace) -> Result<Vec<String>, StoreError> {
@@ -240,11 +244,7 @@ mod tests {
 
         let ns = vec!["test".into()];
         store
-            .put(
-                &ns,
-                "key1",
-                &serde_json::json!({"text": "hello world"}),
-            )
+            .put(&ns, "key1", &serde_json::json!({"text": "hello world"}))
             .await
             .unwrap();
         store
@@ -282,7 +282,10 @@ mod tests {
             .unwrap();
 
         let value = store.get(&ns, "key1").await.unwrap();
-        assert_eq!(value, Some(serde_json::json!({"text": "hello", "data": 123})));
+        assert_eq!(
+            value,
+            Some(serde_json::json!({"text": "hello", "data": 123}))
+        );
 
         let not_found = store.get(&ns, "non_existent").await.unwrap();
         assert_eq!(not_found, None);

@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::tool_source::{ToolCallContent, ToolSourceError, ToolSpec, ToolCallContext};
+use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
 
 /// Represents a single tool that can be called by the LLM.
 ///
@@ -10,39 +10,39 @@ use crate::tool_source::{ToolCallContent, ToolSourceError, ToolSpec, ToolCallCon
 ///
 /// # Examples
 ///
- /// ```
- /// use async_trait::async_trait;
- /// use serde_json::Value;
- /// use langgraph::tools::Tool;
- /// use langgraph::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
- ///
- /// struct MyTool;
- ///
- /// #[async_trait]
- /// impl Tool for MyTool {
- ///     fn name(&self) -> &str {
- ///         "my_tool"
- ///     }
- ///
- ///     fn spec(&self) -> ToolSpec {
- ///         ToolSpec {
- ///             name: "my_tool".to_string(),
- ///             description: Some("A sample tool".to_string()),
- ///             input_schema: serde_json::json!({}),
- ///         }
- ///     }
- ///
- ///     async fn call(
- ///         &self,
- ///         args: Value,
- ///         _ctx: Option<&ToolCallContext>,
- ///     ) -> Result<ToolCallContent, ToolSourceError> {
- ///         Ok(ToolCallContent {
- ///             text: "tool executed".to_string(),
- ///         })
- ///     }
- /// }
- /// ```
+/// ```
+/// use async_trait::async_trait;
+/// use serde_json::Value;
+/// use langgraph::tools::Tool;
+/// use langgraph::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
+///
+/// struct MyTool;
+///
+/// #[async_trait]
+/// impl Tool for MyTool {
+///     fn name(&self) -> &str {
+///         "my_tool"
+///     }
+///
+///     fn spec(&self) -> ToolSpec {
+///         ToolSpec {
+///             name: "my_tool".to_string(),
+///             description: Some("A sample tool".to_string()),
+///             input_schema: serde_json::json!({}),
+///         }
+///     }
+///
+///     async fn call(
+///         &self,
+///         args: Value,
+///         _ctx: Option<&ToolCallContext>,
+///     ) -> Result<ToolCallContent, ToolSourceError> {
+///         Ok(ToolCallContent {
+///             text: "tool executed".to_string(),
+///         })
+///     }
+/// }
+/// ```
 ///
 /// # Interaction
 ///

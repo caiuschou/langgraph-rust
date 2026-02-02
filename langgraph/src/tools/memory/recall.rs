@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use serde_json::json;
 
 use crate::memory::{Namespace, Store};
-use crate::tool_source::{ToolCallContent, ToolSourceError, ToolCallContext};
+use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError};
 use crate::tools::Tool;
 
 /// Tool name for the recall operation.
@@ -112,13 +112,9 @@ impl Tool for RecallTool {
                 crate::memory::StoreError::NotFound => {
                     ToolSourceError::NotFound("key not found".to_string())
                 }
-                crate::memory::StoreError::Serialization(s) => {
-                    ToolSourceError::InvalidInput(s)
-                }
+                crate::memory::StoreError::Serialization(s) => ToolSourceError::InvalidInput(s),
                 crate::memory::StoreError::Storage(s) => ToolSourceError::Transport(s),
-                crate::memory::StoreError::EmbeddingError(s) => {
-                    ToolSourceError::Transport(s)
-                }
+                crate::memory::StoreError::EmbeddingError(s) => ToolSourceError::Transport(s),
             })?;
 
         let text = match opt {

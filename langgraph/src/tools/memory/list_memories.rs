@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use serde_json::json;
 
 use crate::memory::{Namespace, Store};
-use crate::tool_source::{ToolCallContent, ToolSourceError, ToolCallContext};
+use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError};
 use crate::tools::Tool;
 
 /// Tool name for the list_memories operation.
@@ -84,7 +84,8 @@ impl Tool for ListMemoriesTool {
             name: TOOL_LIST_MEMORIES.to_string(),
             description: Some(
                 "List all memory keys in the current namespace. Call when you need to see what \
-                 has been stored before recalling or searching.".to_string(),
+                 has been stored before recalling or searching."
+                    .to_string(),
             ),
             input_schema: json!({
                 "type": "object",
@@ -106,13 +107,9 @@ impl Tool for ListMemoriesTool {
                 crate::memory::StoreError::NotFound => {
                     ToolSourceError::NotFound("key not found".to_string())
                 }
-                crate::memory::StoreError::Serialization(s) => {
-                    ToolSourceError::InvalidInput(s)
-                }
+                crate::memory::StoreError::Serialization(s) => ToolSourceError::InvalidInput(s),
                 crate::memory::StoreError::Storage(s) => ToolSourceError::Transport(s),
-                crate::memory::StoreError::EmbeddingError(s) => {
-                    ToolSourceError::Transport(s)
-                }
+                crate::memory::StoreError::EmbeddingError(s) => ToolSourceError::Transport(s),
             })?;
 
         Ok(ToolCallContent {

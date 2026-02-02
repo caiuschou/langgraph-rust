@@ -4,8 +4,8 @@
 //!
 //! [`ReactBuildConfig`]: config::ReactBuildConfig
 
-mod config;
 mod build;
+mod config;
 
-pub use config::ReactBuildConfig;
 pub use build::{build_react_run_context, ReactRunContext};
+pub use config::ReactBuildConfig;

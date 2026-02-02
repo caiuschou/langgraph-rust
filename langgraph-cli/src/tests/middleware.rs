@@ -6,7 +6,9 @@
 use std::pin::Pin;
 use std::sync::Arc;
 
-use langgraph::{AgentError, Message, NameNode, Next, NodeMiddleware, ReActState, StateGraph, END, START};
+use langgraph::{
+    AgentError, Message, NameNode, Next, NodeMiddleware, ReActState, StateGraph, END, START,
+};
 
 use crate::middleware::{LoggingMiddleware, WithNodeLogging};
 
@@ -23,7 +25,12 @@ async fn logging_middleware_around_run_calls_inner_and_returns_result() {
     let inner_called_clone = inner_called.clone();
     let inner = Box::new(move |s: ReActState| {
         inner_called_clone.store(true, std::sync::atomic::Ordering::SeqCst);
-        Box::pin(async move { Ok((s, next.clone())) }) as Pin<Box<dyn std::future::Future<Output = Result<(ReActState, Next), AgentError>> + Send>>
+        Box::pin(async move { Ok((s, next.clone())) })
+            as Pin<
+                Box<
+                    dyn std::future::Future<Output = Result<(ReActState, Next), AgentError>> + Send,
+                >,
+            >
     });
     let result = m.around_run("test_node", state.clone(), inner).await;
     assert!(inner_called.load(std::sync::atomic::Ordering::SeqCst));
@@ -42,9 +49,12 @@ async fn logging_middleware_around_run_propagates_error() {
     let m = LoggingMiddleware;
     let state = ReActState::default();
     let inner = Box::new(|_s: ReActState| {
-        Box::pin(async {
-            Err(AgentError::ExecutionFailed("fail".into()))
-        }) as Pin<Box<dyn std::future::Future<Output = Result<(ReActState, Next), AgentError>> + Send>>
+        Box::pin(async { Err(AgentError::ExecutionFailed("fail".into())) })
+            as Pin<
+                Box<
+                    dyn std::future::Future<Output = Result<(ReActState, Next), AgentError>> + Send,
+                >,
+            >
     });
     let result = m.around_run("test_node", state, inner).await;
     match &result {
@@ -63,12 +73,20 @@ async fn logging_middleware_around_run_enter_exit_twice() {
     };
     let inner1 = Box::new(|s: ReActState| {
         Box::pin(async move { Ok((s, Next::Continue)) })
-            as Pin<Box<dyn std::future::Future<Output = Result<(ReActState, Next), AgentError>> + Send>>
+            as Pin<
+                Box<
+                    dyn std::future::Future<Output = Result<(ReActState, Next), AgentError>> + Send,
+                >,
+            >
     });
     let r1: (ReActState, Next) = m.around_run("node1", state0.clone(), inner1).await.unwrap();
     let inner2 = Box::new(|s: ReActState| {
         Box::pin(async move { Ok((s, Next::End)) })
-            as Pin<Box<dyn std::future::Future<Output = Result<(ReActState, Next), AgentError>> + Send>>
+            as Pin<
+                Box<
+                    dyn std::future::Future<Output = Result<(ReActState, Next), AgentError>> + Send,
+                >,
+            >
     });
     let r2: (ReActState, Next) = m.around_run("node2", r1.0.clone(), inner2).await.unwrap();
     assert_eq!(r2.0.messages.len(), 1);

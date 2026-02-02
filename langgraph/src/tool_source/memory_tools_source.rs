@@ -91,7 +91,9 @@ impl ToolSource for MemoryToolsSource {
         arguments: serde_json::Value,
         ctx: Option<&crate::tool_source::ToolCallContext>,
     ) -> Result<crate::tool_source::ToolCallContent, ToolSourceError> {
-        self._source.call_tool_with_context(name, arguments, ctx).await
+        self._source
+            .call_tool_with_context(name, arguments, ctx)
+            .await
     }
 
     fn set_call_context(&self, ctx: Option<crate::tool_source::ToolCallContext>) {

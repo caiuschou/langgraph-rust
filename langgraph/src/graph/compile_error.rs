@@ -38,7 +38,11 @@ mod tests {
     fn compilation_error_display_node_not_found() {
         let err = CompilationError::NodeNotFound("x".to_string());
         let s = err.to_string();
-        assert!(s.contains("node not found"), "Display should contain 'node not found': {}", s);
+        assert!(
+            s.contains("node not found"),
+            "Display should contain 'node not found': {}",
+            s
+        );
         assert!(s.contains("x"), "Display should contain node id: {}", s);
     }
 
@@ -59,7 +63,11 @@ mod tests {
     fn compilation_error_display_missing_end() {
         let err = CompilationError::MissingEnd;
         let s = err.to_string();
-        assert!(s.to_lowercase().contains("end"), "Display should mention END: {}", s);
+        assert!(
+            s.to_lowercase().contains("end"),
+            "Display should mention END: {}",
+            s
+        );
     }
 
     /// **Scenario**: Display of InvalidChain contains "single linear chain" and the reason.

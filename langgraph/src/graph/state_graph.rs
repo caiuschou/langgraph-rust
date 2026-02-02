@@ -6,6 +6,7 @@
 //! Checkpointer/store: docs/rust-langgraph/16-memory-design.md.
 
 use std::collections::{HashMap, HashSet};
+use std::fmt::Debug;
 use std::sync::Arc;
 
 use crate::graph::compile_error::CompilationError;
@@ -41,7 +42,7 @@ pub struct StateGraph<S> {
 
 impl<S> Default for StateGraph<S>
 where
-    S: Clone + Send + Sync + 'static,
+    S: Clone + Send + Sync + Debug + 'static,
 {
     fn default() -> Self {
         Self::new()
@@ -50,7 +51,7 @@ where
 
 impl<S> StateGraph<S>
 where
-    S: Clone + Send + Sync + 'static,
+    S: Clone + Send + Sync + Debug + 'static,
 {
     /// Creates an empty graph.
     pub fn new() -> Self {
@@ -161,9 +162,11 @@ where
         let first = match start_edges.len() {
             0 => return Err(CompilationError::MissingStart),
             1 => start_edges.into_iter().next().unwrap(),
-            _ => return Err(CompilationError::InvalidChain(
-                "multiple edges from START (branch)".into(),
-            )),
+            _ => {
+                return Err(CompilationError::InvalidChain(
+                    "multiple edges from START (branch)".into(),
+                ))
+            }
         };
 
         let end_edges: Vec<_> = self

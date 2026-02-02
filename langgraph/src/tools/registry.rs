@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use tokio::sync::RwLock;
 
-use crate::tool_source::{ToolCallContent, ToolSpec, ToolSourceError, ToolCallContext};
+use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
 use crate::tools::r#trait::Tool;
 
 /// Central registry for managing a collection of tools.
@@ -11,25 +11,25 @@ use crate::tools::r#trait::Tool;
 /// Stores tools by name in a HashMap and provides registration, listing,
 /// and calling functionality. Used by AggregateToolSource to implement ToolSource trait.
 ///
- /// # Examples
- ///
- /// ```no_run
- /// use langgraph::tools::{Tool, ToolRegistry};
- /// use langgraph::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
- /// use serde_json::json;
- /// # use async_trait::async_trait;
- /// # struct MockTool;
- /// # #[async_trait] impl Tool for MockTool {
- /// #     fn name(&self) -> &str { "mock" }
- /// #     fn spec(&self) -> ToolSpec { todo!() }
- /// #     async fn call(&self, _: serde_json::Value, _: Option<&ToolCallContext>) -> Result<ToolCallContent, ToolSourceError> { todo!() }
- /// # }
- ///
- /// let mut registry = ToolRegistry::new();
- /// registry.register(Box::new(MockTool));
- /// let specs = registry.list();
- /// assert_eq!(specs.len(), 1);
- /// ```
+/// # Examples
+///
+/// ```no_run
+/// use langgraph::tools::{Tool, ToolRegistry};
+/// use langgraph::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
+/// use serde_json::json;
+/// # use async_trait::async_trait;
+/// # struct MockTool;
+/// # #[async_trait] impl Tool for MockTool {
+/// #     fn name(&self) -> &str { "mock" }
+/// #     fn spec(&self) -> ToolSpec { todo!() }
+/// #     async fn call(&self, _: serde_json::Value, _: Option<&ToolCallContext>) -> Result<ToolCallContent, ToolSourceError> { todo!() }
+/// # }
+///
+/// let mut registry = ToolRegistry::new();
+/// registry.register(Box::new(MockTool));
+/// let specs = registry.list();
+/// assert_eq!(specs.len(), 1);
+/// ```
 ///
 /// # Interaction
 ///
@@ -65,22 +65,22 @@ impl ToolRegistry {
     ///
     /// - `tool`: Box<dyn Tool> to register
     ///
- /// # Examples
- ///
- /// ```
- /// use langgraph::tools::{Tool, ToolRegistry};
- /// use langgraph::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
- /// # use async_trait::async_trait;
- /// # struct MockTool;
- /// # #[async_trait] impl Tool for MockTool {
- /// #     fn name(&self) -> &str { "mock" }
- /// #     fn spec(&self) -> ToolSpec { todo!() }
- /// #     async fn call(&self, _: serde_json::Value, _: Option<&ToolCallContext>) -> Result<ToolCallContent, ToolSourceError> { todo!() }
- /// # }
- ///
- /// let mut registry = ToolRegistry::new();
- /// registry.register(Box::new(MockTool));
- /// ```
+    /// # Examples
+    ///
+    /// ```
+    /// use langgraph::tools::{Tool, ToolRegistry};
+    /// use langgraph::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
+    /// # use async_trait::async_trait;
+    /// # struct MockTool;
+    /// # #[async_trait] impl Tool for MockTool {
+    /// #     fn name(&self) -> &str { "mock" }
+    /// #     fn spec(&self) -> ToolSpec { todo!() }
+    /// #     async fn call(&self, _: serde_json::Value, _: Option<&ToolCallContext>) -> Result<ToolCallContent, ToolSourceError> { todo!() }
+    /// # }
+    ///
+    /// let mut registry = ToolRegistry::new();
+    /// registry.register(Box::new(MockTool));
+    /// ```
     pub fn register(&mut self, tool: Box<dyn Tool>) {
         let name = tool.name().to_string();
         self.tools.insert(name, tool);
@@ -94,25 +94,25 @@ impl ToolRegistry {
     ///
     /// Vector of ToolSpec for all registered tools.
     ///
- /// # Examples
- ///
- /// ```no_run
- /// use langgraph::tools::{Tool, ToolRegistry};
- /// use langgraph::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
- /// # use async_trait::async_trait;
- /// # struct MockTool;
- /// # #[async_trait] impl Tool for MockTool {
- /// #     fn name(&self) -> &str { "mock" }
- /// #     fn spec(&self) -> ToolSpec { todo!() }
- /// #     async fn call(&self, _: serde_json::Value, _: Option<&ToolCallContext>) -> Result<ToolCallContent, ToolSourceError> { todo!() }
- /// # }
- ///
- /// let mut registry = ToolRegistry::new();
- /// registry.register(Box::new(MockTool));
- /// let specs = registry.list();
- /// assert_eq!(specs.len(), 1);
- /// assert_eq!(specs[0].name, "mock");
- /// ```
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use langgraph::tools::{Tool, ToolRegistry};
+    /// use langgraph::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
+    /// # use async_trait::async_trait;
+    /// # struct MockTool;
+    /// # #[async_trait] impl Tool for MockTool {
+    /// #     fn name(&self) -> &str { "mock" }
+    /// #     fn spec(&self) -> ToolSpec { todo!() }
+    /// #     async fn call(&self, _: serde_json::Value, _: Option<&ToolCallContext>) -> Result<ToolCallContent, ToolSourceError> { todo!() }
+    /// # }
+    ///
+    /// let mut registry = ToolRegistry::new();
+    /// registry.register(Box::new(MockTool));
+    /// let specs = registry.list();
+    /// assert_eq!(specs.len(), 1);
+    /// assert_eq!(specs[0].name, "mock");
+    /// ```
     pub fn list(&self) -> Vec<ToolSpec> {
         self.tools.values().map(|tool| tool.spec()).collect()
     }
@@ -133,26 +133,26 @@ impl ToolRegistry {
     ///
     /// Returns ToolSourceError::NotFound if tool name is not registered.
     ///
- /// # Examples
- ///
- /// ```no_run
- /// use langgraph::tools::{Tool, ToolRegistry};
- /// use langgraph::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
- /// use serde_json::json;
- /// # use async_trait::async_trait;
- /// # struct MockTool;
- /// # #[async_trait] impl Tool for MockTool {
- /// #     fn name(&self) -> &str { "mock" }
- /// #     fn spec(&self) -> ToolSpec { todo!() }
- /// #     async fn call(&self, _: serde_json::Value, _: Option<&ToolCallContext>) -> Result<ToolCallContent, ToolSourceError> { todo!() }
- /// # }
- /// # #[tokio::main]
- /// # async fn main() {
- /// let mut registry = ToolRegistry::new();
- /// registry.register(Box::new(MockTool));
- /// let result = registry.call("mock", json!({}), None).await;
- /// # }
- /// ```
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use langgraph::tools::{Tool, ToolRegistry};
+    /// use langgraph::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
+    /// use serde_json::json;
+    /// # use async_trait::async_trait;
+    /// # struct MockTool;
+    /// # #[async_trait] impl Tool for MockTool {
+    /// #     fn name(&self) -> &str { "mock" }
+    /// #     fn spec(&self) -> ToolSpec { todo!() }
+    /// #     async fn call(&self, _: serde_json::Value, _: Option<&ToolCallContext>) -> Result<ToolCallContent, ToolSourceError> { todo!() }
+    /// # }
+    /// # #[tokio::main]
+    /// # async fn main() {
+    /// let mut registry = ToolRegistry::new();
+    /// registry.register(Box::new(MockTool));
+    /// let result = registry.call("mock", json!({}), None).await;
+    /// # }
+    /// ```
     pub async fn call(
         &self,
         name: &str,
@@ -178,32 +178,32 @@ impl Default for ToolRegistry {
 /// Provides the same interface as ToolRegistry but is safe to share
 /// across threads and use with async/await. This is used by AggregateToolSource.
 ///
- /// # Examples
- ///
- /// ```no_run
- /// use langgraph::tools::{Tool, ToolRegistryLocked};
- /// use langgraph::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
- /// use serde_json::json;
- /// # use async_trait::async_trait;
- /// # struct MockTool;
- /// # #[async_trait] impl Tool for MockTool {
- /// #     fn name(&self) -> &str { "mock" }
- /// #     fn spec(&self) -> ToolSpec { todo!() }
- /// #     async fn call(&self, _: serde_json::Value, _: Option<&ToolCallContext>) -> Result<ToolCallContent, ToolSourceError> { todo!() }
- /// # }
- /// # #[tokio::main]
- /// # async fn main() {
- /// use std::sync::Arc;
- ///
- /// let mut registry = ToolRegistryLocked::new();
- /// registry.register_sync(Box::new(MockTool));
- /// let specs = registry.list().await;
- /// assert_eq!(specs.len(), 1);
- ///
- /// let shared = Arc::new(registry);
- /// let result = shared.call("mock", json!({}), None).await;
- /// # }
- /// ```
+/// # Examples
+///
+/// ```no_run
+/// use langgraph::tools::{Tool, ToolRegistryLocked};
+/// use langgraph::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
+/// use serde_json::json;
+/// # use async_trait::async_trait;
+/// # struct MockTool;
+/// # #[async_trait] impl Tool for MockTool {
+/// #     fn name(&self) -> &str { "mock" }
+/// #     fn spec(&self) -> ToolSpec { todo!() }
+/// #     async fn call(&self, _: serde_json::Value, _: Option<&ToolCallContext>) -> Result<ToolCallContent, ToolSourceError> { todo!() }
+/// # }
+/// # #[tokio::main]
+/// # async fn main() {
+/// use std::sync::Arc;
+///
+/// let mut registry = ToolRegistryLocked::new();
+/// registry.register_sync(Box::new(MockTool));
+/// let specs = registry.list().await;
+/// assert_eq!(specs.len(), 1);
+///
+/// let shared = Arc::new(registry);
+/// let result = shared.call("mock", json!({}), None).await;
+/// # }
+/// ```
 ///
 /// # Interaction
 ///
@@ -217,16 +217,16 @@ pub struct ToolRegistryLocked {
 impl ToolRegistryLocked {
     /// Creates a new empty thread-safe tool registry.
     ///
- /// # Examples
- ///
- /// ```no_run
- /// use langgraph::tools::ToolRegistryLocked;
- /// # #[tokio::main]
- /// # async fn main() {
- /// let registry = ToolRegistryLocked::new();
- /// assert_eq!(registry.list().await.len(), 0);
- /// # }
- /// ```
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use langgraph::tools::ToolRegistryLocked;
+    /// # #[tokio::main]
+    /// # async fn main() {
+    /// let registry = ToolRegistryLocked::new();
+    /// assert_eq!(registry.list().await.len(), 0);
+    /// # }
+    /// ```
     pub fn new() -> Self {
         Self {
             inner: Arc::new(RwLock::new(ToolRegistry::new())),
@@ -243,24 +243,24 @@ impl ToolRegistryLocked {
     ///
     /// - `tool`: Box<dyn Tool> to register
     ///
- /// # Examples
- ///
- /// ```no_run
- /// use langgraph::tools::{Tool, ToolRegistryLocked};
- /// use langgraph::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
- /// # use async_trait::async_trait;
- /// # struct MockTool;
- /// # #[async_trait] impl Tool for MockTool {
- /// #     fn name(&self) -> &str { "mock" }
- /// #     fn spec(&self) -> ToolSpec { todo!() }
- /// #     async fn call(&self, _: serde_json::Value, _: Option<&ToolCallContext>) -> Result<ToolCallContent, ToolSourceError> { todo!() }
- /// # }
- /// # #[tokio::main]
- /// # async fn main() {
- /// let registry = ToolRegistryLocked::new();
- /// registry.register_sync(Box::new(MockTool));
- /// # }
- /// ```
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use langgraph::tools::{Tool, ToolRegistryLocked};
+    /// use langgraph::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
+    /// # use async_trait::async_trait;
+    /// # struct MockTool;
+    /// # #[async_trait] impl Tool for MockTool {
+    /// #     fn name(&self) -> &str { "mock" }
+    /// #     fn spec(&self) -> ToolSpec { todo!() }
+    /// #     async fn call(&self, _: serde_json::Value, _: Option<&ToolCallContext>) -> Result<ToolCallContent, ToolSourceError> { todo!() }
+    /// # }
+    /// # #[tokio::main]
+    /// # async fn main() {
+    /// let registry = ToolRegistryLocked::new();
+    /// registry.register_sync(Box::new(MockTool));
+    /// # }
+    /// ```
     pub fn register_sync(&self, tool: Box<dyn Tool>) {
         let registry = self.inner.clone();
         std::thread::spawn(move || {
@@ -285,26 +285,26 @@ impl ToolRegistryLocked {
     ///
     /// Vector of ToolSpec for all registered tools.
     ///
- /// # Examples
- ///
- /// ```no_run
- /// use langgraph::tools::{Tool, ToolRegistryLocked};
- /// use langgraph::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
- /// # use async_trait::async_trait;
- /// # struct MockTool;
- /// # #[async_trait] impl Tool for MockTool {
- /// #     fn name(&self) -> &str { "mock" }
- /// #     fn spec(&self) -> ToolSpec { todo!() }
- /// #     async fn call(&self, _: serde_json::Value, _: Option<&ToolCallContext>) -> Result<ToolCallContent, ToolSourceError> { todo!() }
- /// # }
- /// # #[tokio::main]
- /// # async fn main() {
- /// let mut registry = ToolRegistryLocked::new();
- /// registry.register_sync(Box::new(MockTool));
- /// let specs = registry.list().await;
- /// assert_eq!(specs.len(), 1);
- /// # }
- /// ```
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use langgraph::tools::{Tool, ToolRegistryLocked};
+    /// use langgraph::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
+    /// # use async_trait::async_trait;
+    /// # struct MockTool;
+    /// # #[async_trait] impl Tool for MockTool {
+    /// #     fn name(&self) -> &str { "mock" }
+    /// #     fn spec(&self) -> ToolSpec { todo!() }
+    /// #     async fn call(&self, _: serde_json::Value, _: Option<&ToolCallContext>) -> Result<ToolCallContent, ToolSourceError> { todo!() }
+    /// # }
+    /// # #[tokio::main]
+    /// # async fn main() {
+    /// let mut registry = ToolRegistryLocked::new();
+    /// registry.register_sync(Box::new(MockTool));
+    /// let specs = registry.list().await;
+    /// assert_eq!(specs.len(), 1);
+    /// # }
+    /// ```
     pub async fn list(&self) -> Vec<ToolSpec> {
         let inner = self.inner.read().await;
         inner.list()
@@ -328,26 +328,26 @@ impl ToolRegistryLocked {
     ///
     /// Returns ToolSourceError::NotFound if tool name is not registered.
     ///
- /// # Examples
- ///
- /// ```no_run
- /// use langgraph::tools::{Tool, ToolRegistryLocked};
- /// use langgraph::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
- /// use serde_json::json;
- /// # use async_trait::async_trait;
- /// # struct MockTool;
- /// # #[async_trait] impl Tool for MockTool {
- /// #     fn name(&self) -> &str { "mock" }
- /// #     fn spec(&self) -> ToolSpec { todo!() }
- /// #     async fn call(&self, _: serde_json::Value, _: Option<&ToolCallContext>) -> Result<ToolCallContent, ToolSourceError> { todo!() }
- /// # }
- /// # #[tokio::main]
- /// # async fn main() {
- /// let mut registry = ToolRegistryLocked::new();
- /// registry.register_sync(Box::new(MockTool));
- /// let result = registry.call("mock", json!({}), None).await;
- /// # }
- /// ```
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use langgraph::tools::{Tool, ToolRegistryLocked};
+    /// use langgraph::tool_source::{ToolCallContent, ToolCallContext, ToolSourceError, ToolSpec};
+    /// use serde_json::json;
+    /// # use async_trait::async_trait;
+    /// # struct MockTool;
+    /// # #[async_trait] impl Tool for MockTool {
+    /// #     fn name(&self) -> &str { "mock" }
+    /// #     fn spec(&self) -> ToolSpec { todo!() }
+    /// #     async fn call(&self, _: serde_json::Value, _: Option<&ToolCallContext>) -> Result<ToolCallContent, ToolSourceError> { todo!() }
+    /// # }
+    /// # #[tokio::main]
+    /// # async fn main() {
+    /// let mut registry = ToolRegistryLocked::new();
+    /// registry.register_sync(Box::new(MockTool));
+    /// let result = registry.call("mock", json!({}), None).await;
+    /// # }
+    /// ```
     pub async fn call(
         &self,
         name: &str,

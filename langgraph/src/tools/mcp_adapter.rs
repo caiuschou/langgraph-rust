@@ -9,10 +9,10 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSource, ToolSourceError, ToolSpec};
-use crate::tools::Tool;
 #[cfg(feature = "mcp")]
 use crate::tool_source::McpToolSource;
+use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSource, ToolSourceError, ToolSpec};
+use crate::tools::Tool;
 
 /// Adapter that makes one MCP tool implement the `Tool` trait.
 ///

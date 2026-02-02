@@ -8,8 +8,8 @@ use std::sync::Arc;
 use crate::error::AgentError;
 use crate::memory::{JsonSerializer, RunnableConfig, SqliteSaver, SqliteStore};
 use crate::state::ReActState;
-use crate::tool_source::{MemoryToolsSource, MockToolSource, ToolSource};
 use crate::tool_source::McpToolSource;
+use crate::tool_source::{MemoryToolsSource, MockToolSource, ToolSource};
 use crate::tools::{register_mcp_tools, AggregateToolSource};
 
 use super::config::ReactBuildConfig;
@@ -41,7 +41,9 @@ fn build_checkpointer(
     }
     let serializer = Arc::new(JsonSerializer);
     let saver = SqliteSaver::new(db_path, serializer).map_err(to_agent_error)?;
-    Ok(Some(Arc::new(saver) as Arc<dyn crate::memory::Checkpointer<ReActState>>))
+    Ok(Some(
+        Arc::new(saver) as Arc<dyn crate::memory::Checkpointer<ReActState>>
+    ))
 }
 
 /// Builds store when user_id is set; otherwise returns None.
@@ -94,12 +96,8 @@ async fn register_exa_mcp(
     if let Ok(home) = std::env::var("HOME") {
         env.push(("HOME".to_string(), home));
     }
-    let mcp = McpToolSource::new_with_env(
-        config.mcp_remote_cmd.clone(),
-        args,
-        env,
-    )
-    .map_err(to_agent_error)?;
+    let mcp = McpToolSource::new_with_env(config.mcp_remote_cmd.clone(), args, env)
+        .map_err(to_agent_error)?;
     register_mcp_tools(aggregate, Arc::new(mcp))
         .await
         .map_err(to_agent_error)?;

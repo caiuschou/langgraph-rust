@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use langgraph::{Message, MockLlm, MockToolSource, REACT_SYSTEM_PROMPT, ToolSource};
+use langgraph::{Message, MockLlm, MockToolSource, ToolSource, REACT_SYSTEM_PROMPT};
 
 use crate::run::run_react_graph;
 
@@ -25,8 +25,7 @@ async fn run_react_graph_without_checkpointer_or_store_returns_ok_and_state_has_
     let llm: Box<dyn langgraph::LlmClient> = Box::new(llm);
     let tool_source: Box<dyn ToolSource> = Box::new(tool_source);
 
-    let result =
-        run_react_graph("hi", llm, tool_source, None, None, None).await;
+    let result = run_react_graph("hi", llm, tool_source, None, None, None).await;
 
     let state = result.expect("run_react_graph with mock should succeed");
     assert!(
@@ -39,10 +38,14 @@ async fn run_react_graph_without_checkpointer_or_store_returns_ok_and_state_has_
         .iter()
         .any(|m| matches!(m, Message::User(s) if s == "hi"));
     assert!(has_user, "state should contain user message 'hi'");
-    let has_assistant = state.messages.iter().any(|m| {
-        matches!(m, Message::Assistant(s) if s == "Hello from mock.")
-    });
-    assert!(has_assistant, "state should contain assistant message from mock");
+    let has_assistant = state
+        .messages
+        .iter()
+        .any(|m| matches!(m, Message::Assistant(s) if s == "Hello from mock."));
+    assert!(
+        has_assistant,
+        "state should contain assistant message from mock"
+    );
 }
 
 /// **Scenario**: When user_message is empty string, run_react_graph still returns Ok and state
@@ -58,8 +61,7 @@ async fn run_react_graph_with_empty_user_message_returns_ok_and_state_has_empty_
     let llm: Box<dyn langgraph::LlmClient> = Box::new(llm);
     let tool_source: Box<dyn ToolSource> = Box::new(tool_source);
 
-    let result =
-        run_react_graph("", llm, tool_source, None, None, None).await;
+    let result = run_react_graph("", llm, tool_source, None, None, None).await;
 
     let state = result.expect("run_react_graph should succeed");
     let has_empty_user = state
@@ -116,15 +118,7 @@ async fn run_react_graph_one_round_with_tool_call_returns_ok_and_tool_result_in_
     let llm: Box<dyn langgraph::LlmClient> = Box::new(llm);
     let tool_source: Box<dyn ToolSource> = Box::new(tool_source);
 
-    let result = run_react_graph(
-        "What time is it?",
-        llm,
-        tool_source,
-        None,
-        None,
-        None,
-    )
-    .await;
+    let result = run_react_graph("What time is it?", llm, tool_source, None, None, None).await;
 
     let state = result.expect("run_react_graph with tool call should succeed");
     assert!(
@@ -132,15 +126,19 @@ async fn run_react_graph_one_round_with_tool_call_returns_ok_and_tool_result_in_
         "expected at least user + assistant + tool result user: {}",
         state.messages.len()
     );
-    let has_tool_result = state.messages.iter().any(|m| {
-        matches!(m, Message::User(s) if s.contains("Tool") && s.contains("2025"))
-    });
+    let has_tool_result = state
+        .messages
+        .iter()
+        .any(|m| matches!(m, Message::User(s) if s.contains("Tool") && s.contains("2025")));
     assert!(
         has_tool_result,
         "state should contain a User message with tool result (Tool + date)"
     );
     assert!(state.tool_calls.is_empty(), "tool_calls should be cleared");
-    assert!(state.tool_results.is_empty(), "tool_results should be cleared");
+    assert!(
+        state.tool_results.is_empty(),
+        "tool_results should be cleared"
+    );
 }
 
 /// **Scenario**: Initial state built inside run_react_graph starts with REACT_SYSTEM_PROMPT and
@@ -156,8 +154,7 @@ async fn run_react_graph_state_starts_with_system_prompt() {
     let llm: Box<dyn langgraph::LlmClient> = Box::new(llm);
     let tool_source: Box<dyn ToolSource> = Box::new(tool_source);
 
-    let result =
-        run_react_graph("hi", llm, tool_source, None, None, None).await;
+    let result = run_react_graph("hi", llm, tool_source, None, None, None).await;
 
     let state = result.expect("run_react_graph should succeed");
     let first = state

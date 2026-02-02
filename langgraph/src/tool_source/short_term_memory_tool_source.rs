@@ -47,8 +47,6 @@ impl ShortTermMemoryToolSource {
     }
 }
 
-
-
 #[async_trait]
 impl ToolSource for ShortTermMemoryToolSource {
     async fn list_tools(&self) -> Result<Vec<crate::tool_source::ToolSpec>, ToolSourceError> {
@@ -74,7 +72,9 @@ impl ToolSource for ShortTermMemoryToolSource {
                 *g = Some(c.clone());
             }
         }
-        self._source.call_tool_with_context(name, arguments, ctx).await
+        self._source
+            .call_tool_with_context(name, arguments, ctx)
+            .await
     }
 
     fn set_call_context(&self, ctx: Option<crate::tool_source::ToolCallContext>) {

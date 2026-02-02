@@ -91,9 +91,17 @@ mod tests {
         let s = ToolSourceError::InvalidInput("bad".into()).to_string();
         assert!(s.to_lowercase().contains("invalid"), "{}", s);
         let s = ToolSourceError::Transport("net".into()).to_string();
-        assert!(s.to_lowercase().contains("transport") || s.to_lowercase().contains("mcp"), "{}", s);
+        assert!(
+            s.to_lowercase().contains("transport") || s.to_lowercase().contains("mcp"),
+            "{}",
+            s
+        );
         let s = ToolSourceError::JsonRpc("rpc".into()).to_string();
-        assert!(s.to_lowercase().contains("json") || s.to_lowercase().contains("rpc"), "{}", s);
+        assert!(
+            s.to_lowercase().contains("json") || s.to_lowercase().contains("rpc"),
+            "{}",
+            s
+        );
     }
 
     /// **Scenario**: ToolSpec and ToolCallContent can be constructed and cloned.

@@ -35,7 +35,7 @@
 //! use async_trait::async_trait;
 //! use langgraph::{Agent, AgentError, Message};
 //!
-//! #[derive(Clone, Default)]
+//! #[derive(Clone, Debug, Default)]
 //! struct MyState { messages: Vec<Message> }
 //!
 //! struct EchoAgent;
@@ -77,6 +77,7 @@ pub mod react;
 #[cfg(all(feature = "sqlite", feature = "mcp"))]
 pub mod react_builder;
 pub mod state;
+pub mod stream;
 pub mod tool_source;
 pub mod tools;
 pub mod traits;
@@ -105,13 +106,14 @@ pub use react::{ActNode, ObserveNode, ThinkNode, REACT_SYSTEM_PROMPT};
 #[cfg(all(feature = "sqlite", feature = "mcp"))]
 pub use react_builder::{build_react_run_context, ReactBuildConfig, ReactRunContext};
 pub use state::{ReActState, ToolCall, ToolResult};
+pub use stream::{MessageChunk, StreamEvent, StreamMetadata, StreamMode};
 #[cfg(feature = "mcp")]
 pub use tool_source::McpToolSource;
-#[cfg(feature = "mcp")]
-pub use tools::{register_mcp_tools, McpToolAdapter};
 pub use tool_source::{
     MemoryToolsSource, MockToolSource, ShortTermMemoryToolSource, StoreToolSource, ToolCallContent,
     ToolCallContext, ToolSource, ToolSourceError, ToolSpec, TOOL_GET_RECENT_MESSAGES,
     TOOL_LIST_MEMORIES, TOOL_RECALL, TOOL_REMEMBER, TOOL_SEARCH_MEMORIES,
 };
+#[cfg(feature = "mcp")]
+pub use tools::{register_mcp_tools, McpToolAdapter};
 pub use traits::Agent;

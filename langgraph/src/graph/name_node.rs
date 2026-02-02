@@ -5,6 +5,7 @@
 //! `Node::id`, `Node::run`; always returns `Next::Continue` and leaves state unchanged.
 
 use async_trait::async_trait;
+use std::fmt::Debug;
 
 use crate::error::AgentError;
 
@@ -31,7 +32,7 @@ impl NameNode {
 #[async_trait]
 impl<S> Node<S> for NameNode
 where
-    S: Clone + Send + Sync + 'static,
+    S: Clone + Send + Sync + Debug + 'static,
 {
     fn id(&self) -> &str {
         &self.name

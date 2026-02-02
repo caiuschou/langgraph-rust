@@ -11,7 +11,7 @@ LangGraph-rust provides a lightweight framework for building stateful AI agents 
 - **Single state type**: Each graph uses one shared state struct that all nodes read from and write to
 - **One step per run**: Each agent implements a single step—receive state, return updated state
 - **State graphs**: Compose agents into graphs with conditional edges for complex workflows
-- **Minimal core API**: No streaming or complex I/O in the core—keep it simple
+- **Minimal core API with optional streaming**: `invoke` stays state-in/state-out; use `stream` for incremental output when you need it
 
 ## Features
 
@@ -22,6 +22,7 @@ LangGraph-rust provides a lightweight framework for building stateful AI agents 
 - **Tool Integration**: Extensible tool system with MCP (Model Context Protocol) support
 - **Persistence**: Optional SQLite and LanceDB backends for long-term memory
 - **Middleware**: Wrap node execution with custom async logic (logging, monitoring, retry, etc.)
+- **Streaming**: Stream per-step states or node updates via `CompiledStateGraph::stream` with selectable modes
 
 ## Installation
 
@@ -143,6 +144,52 @@ async fn main() {
 Run the echo example:
 ```bash
 cargo run -p langgraph-examples --example echo -- "hello, world!"
+```
+
+## Streaming
+
+Stream graph execution instead of waiting for `invoke` to finish. Choose one or more modes with `StreamMode`:
+
+- `Values`: full state after each node
+- `Updates`: node id + state after each node
+- `Messages` / `Custom`: hooks for nodes that opt in via `run_with_context` (built-in nodes emit values/updates today)
+
+```rust,no_run
+use std::collections::HashSet;
+use std::sync::Arc;
+use async_trait::async_trait;
+use tokio_stream::StreamExt;
+use langgraph::{AgentError, Next, Node, StateGraph, StreamEvent, StreamMode, START, END};
+
+struct Add(&'static str, i32);
+
+#[async_trait]
+impl Node<i32> for Add {
+    fn id(&self) -> &str { self.0 }
+    async fn run(&self, state: i32) -> Result<(i32, Next), AgentError> {
+        Ok((state + self.1, Next::Continue))
+    }
+}
+
+#[tokio::main]
+async fn main() {
+    let mut g = StateGraph::<i32>::new();
+    g.add_node("first", Arc::new(Add("first", 1)));
+    g.add_node("second", Arc::new(Add("second", 2)));
+    g.add_edge(START, "first");
+    g.add_edge("first", "second");
+    g.add_edge("second", END);
+
+    let compiled = g.compile().unwrap();
+    let modes = HashSet::from_iter([StreamMode::Updates]);
+    let mut stream = compiled.stream(0, None, modes);
+
+    while let Some(event) = stream.next().await {
+        if let StreamEvent::Updates { node_id, state } = event {
+            println!("{node_id} -> {state}");
+        }
+    }
+}
 ```
 
 ## ReAct Agent Example
@@ -677,6 +724,7 @@ langgraph-rust/
 │   │   ├── react/       # ReAct pattern nodes
 │   │   ├── llm/         # LLM client trait & implementations
 │   │   ├── memory/      # Checkpointing and storage
+│   │   ├── stream/      # Stream modes and events
 │   │   └── tool_source/ # Tool execution & MCP
 │   └── Cargo.toml
 ├── langgraph-cli/       # CLI to run ReAct agents (see langgraph-cli/README.md)
