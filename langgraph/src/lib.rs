@@ -74,6 +74,8 @@ pub mod llm;
 pub mod memory;
 pub mod message;
 pub mod react;
+#[cfg(all(feature = "sqlite", feature = "mcp"))]
+pub mod react_builder;
 pub mod state;
 pub mod tool_source;
 pub mod tools;
@@ -100,6 +102,8 @@ pub use memory::{Embedder, LanceStore};
 pub use memory::{SqliteSaver, SqliteStore};
 pub use message::Message;
 pub use react::{ActNode, ObserveNode, ThinkNode, REACT_SYSTEM_PROMPT};
+#[cfg(all(feature = "sqlite", feature = "mcp"))]
+pub use react_builder::{build_react_run_context, ReactBuildConfig, ReactRunContext};
 pub use state::{ReActState, ToolCall, ToolResult};
 #[cfg(feature = "mcp")]
 pub use tool_source::McpToolSource;
