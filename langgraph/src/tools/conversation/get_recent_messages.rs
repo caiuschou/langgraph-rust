@@ -26,12 +26,10 @@ pub const TOOL_GET_RECENT_MESSAGES: &str = "get_recent_messages";
 ///
 /// let tool = GetRecentMessagesTool;
 ///
-/// let context = ToolCallContext {
-///     recent_messages: vec![
-///         Message::User("hello".to_string()),
-///         Message::Assistant("hi there!".to_string()),
-///     ],
-/// };
+/// let context = ToolCallContext::new(vec![
+///     Message::User("hello".to_string()),
+///     Message::Assistant("hi there!".to_string()),
+/// ]);
 ///
 /// let args = json!({"limit": 2});
 /// let result = tool.call(args, Some(&context)).await.unwrap();
