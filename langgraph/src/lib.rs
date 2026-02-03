@@ -116,7 +116,7 @@ pub use react::{ActNode, ObserveNode, ThinkNode, REACT_SYSTEM_PROMPT};
 #[cfg(all(feature = "sqlite", feature = "mcp"))]
 pub use react_builder::{build_react_run_context, ReactBuildConfig, ReactRunContext};
 pub use state::{ReActState, ToolCall, ToolResult};
-pub use stream::{MessageChunk, StreamEvent, StreamMetadata, StreamMode};
+pub use stream::{CheckpointEvent, MessageChunk, StreamEvent, StreamMetadata, StreamMode, StreamWriter, ToolStreamWriter};
 #[cfg(feature = "mcp")]
 pub use tool_source::McpToolSource;
 pub use tool_source::{

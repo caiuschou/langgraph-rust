@@ -38,7 +38,7 @@ impl Interrupt {
 /// Error raised when a graph is interrupted.
 ///
 /// This error should be caught by the graph executor to handle the interrupt.
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error)]
 #[error("Graph interrupted: {0:?}")]
 pub struct GraphInterrupt(pub Interrupt);
 

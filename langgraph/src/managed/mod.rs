@@ -68,8 +68,6 @@ mod tests {
     use super::*;
     use crate::graph::RunContext;
     use crate::memory::RunnableConfig;
-    use crate::stream::StreamMode;
-    use std::collections::HashSet;
 
     fn create_test_context<S>() -> RunContext<S>
     where

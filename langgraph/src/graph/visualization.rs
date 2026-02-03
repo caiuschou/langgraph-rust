@@ -3,7 +3,6 @@
 //! Provides functionality to export graph structure to Graphviz DOT format
 //! for visualization and debugging.
 
-use std::collections::HashMap;
 use std::fmt::Write;
 
 use super::CompiledStateGraph;

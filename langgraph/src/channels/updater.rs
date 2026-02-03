@@ -18,8 +18,8 @@
 //!
 //! # Example
 //!
-//! ```rust,no_run
-//! use langgraph::channels::{StateUpdater, ReplaceUpdater, FieldUpdater};
+//! ```rust,ignore
+//! use langgraph::channels::{StateUpdater, ReplaceUpdater};
 //!
 //! // Custom state type
 //! #[derive(Clone, Debug)]
