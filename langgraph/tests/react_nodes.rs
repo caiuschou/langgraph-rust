@@ -4,10 +4,16 @@
 //! Each node is fed ReActState and we assert output state shape and content;
 //! uses MockLlm and MockToolSource.
 
+use std::collections::HashSet;
+
 use langgraph::{
+    graph::RunContext,
+    memory::RunnableConfig,
+    stream::{StreamEvent, StreamMode},
     ActNode, Message, MockLlm, MockToolSource, Next, Node, ObserveNode, ReActState, ThinkNode,
     ToolCall, ToolResult,
 };
+use tokio::sync::mpsc;
 
 // --- ThinkNode ---
 
@@ -236,4 +242,184 @@ async fn observe_node_with_loop_returns_end_when_no_tool_calls() {
     let (out, next) = node.run(state).await.unwrap();
     assert_eq!(out.messages.len(), 2);
     assert!(matches!(next, Next::End));
+}
+
+// --- ThinkNode Messages Streaming ---
+
+/// **Scenario**: ThinkNode emits Messages when stream_mode contains Messages.
+#[tokio::test]
+async fn think_node_run_with_context_emits_messages_when_streaming() {
+    let content = "Hello world";
+    let llm = MockLlm::with_no_tool_calls(content).with_stream_by_char();
+    let node = ThinkNode::new(Box::new(llm));
+    let state = ReActState {
+        messages: vec![Message::user("Hi")],
+        tool_calls: vec![],
+        tool_results: vec![],
+    };
+
+    // Create stream channel
+    let (tx, mut rx) = mpsc::channel::<StreamEvent<ReActState>>(128);
+
+    // Create RunContext with Messages streaming enabled
+    let config = RunnableConfig::default();
+    let ctx = RunContext::<ReActState> {
+        config,
+        stream_tx: Some(tx),
+        stream_mode: HashSet::from_iter([StreamMode::Messages]),
+        managed_values: Default::default(),
+        store: None,
+        previous: None,
+        runtime_context: None,
+    };
+
+    // Run node with context
+    let (out, _) = node.run_with_context(state, &ctx).await.unwrap();
+
+    // Verify output state
+    assert_eq!(out.messages.len(), 2);
+    assert!(matches!(&out.messages[1], Message::Assistant(s) if s == content));
+
+    // Collect stream events
+    drop(ctx); // Drop ctx to close channel
+    let mut events = Vec::new();
+    while let Ok(event) = rx.try_recv() {
+        events.push(event);
+    }
+
+    // Verify Messages events were emitted (one per character)
+    assert_eq!(
+        events.len(),
+        content.len(),
+        "should emit one Messages event per character"
+    );
+    for (i, event) in events.iter().enumerate() {
+        match event {
+            StreamEvent::Messages { chunk, metadata } => {
+                assert_eq!(
+                    chunk.content,
+                    content.chars().nth(i).unwrap().to_string(),
+                    "chunk content should be character at index {}",
+                    i
+                );
+                assert_eq!(
+                    metadata.langgraph_node, "think",
+                    "metadata should indicate think node"
+                );
+            }
+            _ => panic!("expected Messages event, got {:?}", event),
+        }
+    }
+}
+
+/// **Scenario**: ThinkNode does NOT emit Messages when stream_mode does not contain Messages.
+#[tokio::test]
+async fn think_node_run_with_context_no_messages_when_mode_empty() {
+    let content = "Hello world";
+    let llm = MockLlm::with_no_tool_calls(content).with_stream_by_char();
+    let node = ThinkNode::new(Box::new(llm));
+    let state = ReActState {
+        messages: vec![Message::user("Hi")],
+        tool_calls: vec![],
+        tool_results: vec![],
+    };
+
+    // Create stream channel
+    let (tx, mut rx) = mpsc::channel::<StreamEvent<ReActState>>(128);
+
+    // Create RunContext WITHOUT Messages in stream_mode
+    let config = RunnableConfig::default();
+    let ctx = RunContext::<ReActState> {
+        config,
+        stream_tx: Some(tx),
+        stream_mode: HashSet::from_iter([StreamMode::Values]), // Messages not included
+        managed_values: Default::default(),
+        store: None,
+        previous: None,
+        runtime_context: None,
+    };
+
+    // Run node with context
+    let (out, _) = node.run_with_context(state, &ctx).await.unwrap();
+
+    // Verify output state is correct
+    assert_eq!(out.messages.len(), 2);
+    assert!(matches!(&out.messages[1], Message::Assistant(s) if s == content));
+
+    // Verify NO Messages events were emitted
+    drop(ctx);
+    let mut events = Vec::new();
+    while let Ok(event) = rx.try_recv() {
+        events.push(event);
+    }
+    assert!(events.is_empty(), "should not emit any events when Messages not in stream_mode");
+}
+
+/// **Scenario**: ThinkNode run_with_context works when stream_tx is None.
+#[tokio::test]
+async fn think_node_run_with_context_no_panic_when_no_stream_tx() {
+    let content = "Hello";
+    let llm = MockLlm::with_no_tool_calls(content);
+    let node = ThinkNode::new(Box::new(llm));
+    let state = ReActState {
+        messages: vec![Message::user("Hi")],
+        tool_calls: vec![],
+        tool_results: vec![],
+    };
+
+    // Create RunContext without stream_tx
+    let config = RunnableConfig::default();
+    let ctx = RunContext::<ReActState> {
+        config,
+        stream_tx: None,
+        stream_mode: HashSet::from_iter([StreamMode::Messages]),
+        managed_values: Default::default(),
+        store: None,
+        previous: None,
+        runtime_context: None,
+    };
+
+    // Should complete without panic
+    let (out, _) = node.run_with_context(state, &ctx).await.unwrap();
+    assert_eq!(out.messages.len(), 2);
+}
+
+/// **Scenario**: ThinkNode streams concatenated chunks equal full content.
+#[tokio::test]
+async fn think_node_stream_chunks_concatenate_to_full_content() {
+    let content = "Test streaming message";
+    let llm = MockLlm::with_no_tool_calls(content).with_stream_by_char();
+    let node = ThinkNode::new(Box::new(llm));
+    let state = ReActState {
+        messages: vec![Message::user("Hi")],
+        tool_calls: vec![],
+        tool_results: vec![],
+    };
+
+    let (tx, mut rx) = mpsc::channel::<StreamEvent<ReActState>>(128);
+    let config = RunnableConfig::default();
+    let ctx = RunContext::<ReActState> {
+        config,
+        stream_tx: Some(tx),
+        stream_mode: HashSet::from_iter([StreamMode::Messages]),
+        managed_values: Default::default(),
+        store: None,
+        previous: None,
+        runtime_context: None,
+    };
+
+    let (out, _) = node.run_with_context(state, &ctx).await.unwrap();
+
+    // Collect and concatenate chunks
+    drop(ctx);
+    let mut concatenated = String::new();
+    while let Ok(event) = rx.try_recv() {
+        if let StreamEvent::Messages { chunk, .. } = event {
+            concatenated.push_str(&chunk.content);
+        }
+    }
+
+    // Verify concatenated equals original content and assistant message
+    assert_eq!(concatenated, content);
+    assert!(matches!(&out.messages[1], Message::Assistant(s) if s == content));
 }
