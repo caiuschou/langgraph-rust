@@ -31,9 +31,7 @@ async fn short_term_memory_without_context_returns_empty_array() {
 async fn short_term_memory_with_context_returns_messages() {
     let source = ShortTermMemoryToolSource::new().await;
     let messages = vec![Message::user("hello"), Message::assistant("hi")];
-    source.set_call_context(Some(ToolCallContext {
-        recent_messages: messages,
-    }));
+    source.set_call_context(Some(ToolCallContext::new(messages)));
 
     let r = source
         .call_tool(TOOL_GET_RECENT_MESSAGES, json!({}))
@@ -61,9 +59,7 @@ async fn short_term_memory_with_limit_returns_last_n() {
         Message::assistant("2"),
         Message::user("3"),
     ];
-    source.set_call_context(Some(ToolCallContext {
-        recent_messages: messages,
-    }));
+    source.set_call_context(Some(ToolCallContext::new(messages)));
 
     let r = source
         .call_tool(TOOL_GET_RECENT_MESSAGES, json!({ "limit": 2 }))
@@ -79,9 +75,7 @@ async fn short_term_memory_with_limit_returns_last_n() {
 #[tokio::test]
 async fn short_term_memory_call_tool_with_context_uses_explicit_ctx() {
     let source = ShortTermMemoryToolSource::new().await;
-    let ctx = ToolCallContext {
-        recent_messages: vec![Message::user("a"), Message::assistant("b")],
-    };
+    let ctx = ToolCallContext::new(vec![Message::user("a"), Message::assistant("b")]);
     let r = source
         .call_tool_with_context(TOOL_GET_RECENT_MESSAGES, json!({}), Some(&ctx))
         .await

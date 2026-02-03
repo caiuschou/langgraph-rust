@@ -51,9 +51,9 @@ async fn memory_tools_source_set_call_context_forwarded_get_recent_messages() {
     let ns = vec!["memories".to_string()];
     let source = MemoryToolsSource::new(store, ns).await;
 
-    source.set_call_context(Some(ToolCallContext {
-        recent_messages: vec![Message::user("hi"), Message::assistant("hello")],
-    }));
+    source.set_call_context(Some(ToolCallContext::new(
+        vec![Message::user("hi"), Message::assistant("hello")],
+    )));
 
     let r = source
         .call_tool(TOOL_GET_RECENT_MESSAGES, json!({}))

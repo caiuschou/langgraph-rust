@@ -179,11 +179,9 @@ async fn aggregate_tool_source_call_unregistered_tool_returns_error() {
 #[tokio::test]
 async fn aggregate_tool_source_set_call_context() {
     let source = AggregateToolSource::new();
-    let context = ToolCallContext {
-        recent_messages: vec![Message::User("test".to_string())],
-    };
+    let context = ToolCallContext::new(vec![Message::User("test".to_string())]);
 
-    source.set_call_context(Some(context));
+    source.set_call_context(Some(context.clone()));
     source.set_call_context(None);
 
     let tool = GetRecentMessagesTool::new();
