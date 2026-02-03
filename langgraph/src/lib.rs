@@ -68,9 +68,12 @@
 //! Concrete agents and state types (e.g. `EchoAgent`, `AgentState`) live in `langgraph-examples`,
 //! not in this framework crate.
 
+pub mod cache;
+pub mod channels;
 pub mod error;
 pub mod graph;
 pub mod llm;
+pub mod managed;
 pub mod memory;
 pub mod message;
 pub mod react;
@@ -82,11 +85,18 @@ pub mod tool_source;
 pub mod tools;
 pub mod traits;
 
+pub use cache::{Cache, CacheError, InMemoryCache};
+pub use channels::{
+    BinaryOperatorAggregate, Channel, ChannelError, EphemeralValue, LastValue,
+};
 pub use error::AgentError;
 pub use graph::{
-    CompilationError, CompiledStateGraph, NameNode, Next, Node, NodeMiddleware, StateGraph, END,
-    START,
+    generate_dot, generate_text, log_graph_complete, log_graph_error, log_graph_start,
+    log_node_complete, log_node_start, log_state_update, CompilationError, CompiledStateGraph,
+    DefaultInterruptHandler, GraphInterrupt, Interrupt, InterruptHandler, NameNode, Next, Node,
+    NodeMiddleware, RetryPolicy, RunContext, Runtime, StateGraph, END, START,
 };
+pub use managed::{IsLastStep, ManagedValue};
 #[cfg(feature = "openai")]
 pub use llm::ChatOpenAI;
 pub use llm::{LlmClient, LlmResponse, MockLlm, ToolChoiceMode};
