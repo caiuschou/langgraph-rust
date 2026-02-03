@@ -4,11 +4,18 @@
 //! `START` and `END` for graph entry/exit, then `compile` or `compile_with_checkpointer`
 //! to get a `CompiledStateGraph`. Design: docs/rust-langgraph/11-state-graph-design.md.
 //! Checkpointer/store: docs/rust-langgraph/16-memory-design.md.
+//!
+//! # State Updates
+//!
+//! By default, nodes return a new state that completely replaces the previous state.
+//! To customize this behavior (e.g., append to lists, aggregate values), use
+//! `with_state_updater` to provide a custom `StateUpdater` implementation.
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::sync::Arc;
 
+use crate::channels::{BoxedStateUpdater, ReplaceUpdater};
 use crate::graph::compile_error::CompilationError;
 use crate::graph::compiled::CompiledStateGraph;
 use crate::graph::node::Node;
@@ -30,6 +37,9 @@ pub const END: &str = "__end__";
 /// **Interaction**: Accepts `Arc<dyn Node<S>>`; produces `CompiledStateGraph<S>`.
 /// Middleware can be set via `with_middleware` for fluent API or passed to `compile_with_middleware`.
 /// External crates can extend the chain via extension traits (methods that take `self` and return `Self`).
+///
+/// **State Updates**: By default, node outputs replace the entire state. Use `with_state_updater`
+/// to customize how updates are merged (e.g., append to lists, aggregate values).
 pub struct StateGraph<S> {
     nodes: HashMap<String, Arc<dyn Node<S>>>,
     /// Edges (from_id, to_id). Compiled graph derives linear execution order from these.
@@ -38,6 +48,9 @@ pub struct StateGraph<S> {
     store: Option<Arc<dyn Store>>,
     /// Optional node middleware; when set, `compile()` uses it (fluent API). See `with_middleware`.
     middleware: Option<Arc<dyn NodeMiddleware<S>>>,
+    /// Optional state updater; when set, controls how node outputs are merged into state.
+    /// Default is `ReplaceUpdater` which fully replaces the state.
+    state_updater: Option<BoxedStateUpdater<S>>,
 }
 
 impl<S> Default for StateGraph<S>
@@ -60,6 +73,7 @@ where
             edges: Vec::new(),
             store: None,
             middleware: None,
+            state_updater: None,
         }
     }
 
@@ -77,6 +91,38 @@ where
     pub fn with_middleware(self, middleware: Arc<dyn NodeMiddleware<S>>) -> Self {
         Self {
             middleware: Some(middleware),
+            ..self
+        }
+    }
+
+    /// Attaches a custom state updater to the graph.
+    ///
+    /// The state updater controls how node outputs are merged into the current state.
+    /// By default (`ReplaceUpdater`), the node's output completely replaces the state.
+    ///
+    /// Use `FieldBasedUpdater` for custom per-field update logic (e.g., append to lists).
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use langgraph::graph::StateGraph;
+    /// use langgraph::channels::FieldBasedUpdater;
+    /// use std::sync::Arc;
+    ///
+    /// #[derive(Clone, Debug)]
+    /// struct MyState { messages: Vec<String>, count: i32 }
+    ///
+    /// let updater = FieldBasedUpdater::new(|current: &mut MyState, update: &MyState| {
+    ///     current.messages.extend(update.messages.iter().cloned());
+    ///     current.count = update.count;
+    /// });
+    ///
+    /// let graph = StateGraph::<MyState>::new()
+    ///     .with_state_updater(Arc::new(updater));
+    /// ```
+    pub fn with_state_updater(self, updater: BoxedStateUpdater<S>) -> Self {
+        Self {
+            state_updater: Some(updater),
             ..self
         }
     }
@@ -237,12 +283,18 @@ where
             current = next;
         }
 
+        // Use ReplaceUpdater as default if no custom updater is provided
+        let state_updater = self
+            .state_updater
+            .unwrap_or_else(|| Arc::new(ReplaceUpdater));
+
         Ok(CompiledStateGraph {
             nodes: self.nodes,
             edge_order,
             checkpointer,
             store: self.store,
             middleware,
+            state_updater,
         })
     }
 }

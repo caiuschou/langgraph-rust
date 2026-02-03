@@ -11,6 +11,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 
+use crate::channels::BoxedStateUpdater;
 use crate::error::AgentError;
 use crate::memory::{Checkpoint, CheckpointSource, Checkpointer, RunnableConfig, Store};
 use crate::stream::{StreamEvent, StreamMode};
@@ -33,6 +34,9 @@ pub struct CompiledStateGraph<S> {
     pub(super) store: Option<Arc<dyn Store>>,
     /// Optional node middleware; set when built with `compile_with_middleware` or `compile_with_checkpointer_and_middleware`.
     pub(super) middleware: Option<Arc<dyn NodeMiddleware<S>>>,
+    /// State updater that controls how node outputs are merged into state.
+    /// Default is `ReplaceUpdater` which fully replaces the state.
+    pub(super) state_updater: BoxedStateUpdater<S>,
 }
 
 impl<S> CompiledStateGraph<S>
@@ -81,7 +85,8 @@ where
                 node.run(current_state).await?
             };
 
-            *state = new_state;
+            // Apply state update using the configured updater
+            self.state_updater.apply_update(state, &new_state);
 
             if let Some(ctx) = run_ctx {
                 if let Some(tx) = &ctx.stream_tx {
@@ -160,6 +165,49 @@ where
         Ok(state)
     }
 
+    /// Runs the graph with a fully configured RunContext.
+    ///
+    /// This method provides more control over the execution context, allowing you to:
+    /// - Pass a custom store for long-term memory
+    /// - Set the previous state (for resuming from checkpoints)
+    /// - Provide custom runtime context data
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use langgraph::graph::RunContext;
+    /// use langgraph::memory::{RunnableConfig, InMemoryStore};
+    /// use std::sync::Arc;
+    ///
+    /// // Create a context with store and custom data
+    /// let config = RunnableConfig::default();
+    /// let store = Arc::new(InMemoryStore::new());
+    /// let ctx = RunContext::<MyState>::new(config)
+    ///     .with_store(store)
+    ///     .with_runtime_context(serde_json::json!({"user_id": "123"}));
+    ///
+    /// // Invoke with context
+    /// let result = graph.invoke_with_context(initial_state, ctx).await?;
+    /// ```
+    pub async fn invoke_with_context(
+        &self,
+        state: S,
+        run_ctx: RunContext<S>,
+    ) -> Result<S, AgentError> {
+        let mut state = state;
+        let mut current_id = self
+            .edge_order
+            .first()
+            .cloned()
+            .ok_or_else(|| AgentError::ExecutionFailed("empty graph".into()))?;
+
+        let config = Some(run_ctx.config.clone());
+        self.run_loop_inner(&mut state, &config, &mut current_id, Some(&run_ctx))
+            .await?;
+
+        Ok(state)
+    }
+
     /// Streams graph execution, emitting events via channel-backed Stream.
     pub fn stream(
         &self,
@@ -177,11 +225,9 @@ where
                 Some(id) => id,
                 None => return,
             };
-            let run_ctx = RunContext {
-                config: config.clone().unwrap_or_default(),
-                stream_tx: Some(tx),
-                stream_mode: mode_set,
-            };
+            let mut run_ctx = RunContext::new(config.clone().unwrap_or_default());
+            run_ctx.stream_tx = Some(tx);
+            run_ctx.stream_mode = mode_set;
 
             let _ = graph
                 .run_loop_inner(&mut state, &config, &mut current_id, Some(&run_ctx))
@@ -221,6 +267,7 @@ mod tests {
             checkpointer: None,
             store: None,
             middleware: None,
+            state_updater: Arc::new(crate::channels::ReplaceUpdater),
         };
         let state = crate::state::ReActState::default();
         let result = graph.invoke(state, None).await;
@@ -466,6 +513,7 @@ mod tests {
             checkpointer: None,
             store: None,
             middleware: None,
+            state_updater: Arc::new(crate::channels::ReplaceUpdater),
         };
         let stream = graph.stream(0, None, HashSet::from_iter([StreamMode::Values]));
         let events: Vec<_> = stream.collect().await;
@@ -580,5 +628,187 @@ mod tests {
             }
         }
         assert_eq!(events.len(), 4, "only Values and Updates from run_loop");
+    }
+
+    // === Runtime Integration Tests ===
+
+    /// **Scenario**: invoke_with_context executes graph with RunContext and produces correct result.
+    #[tokio::test]
+    async fn invoke_with_context_basic() {
+        let graph = build_two_step_graph();
+        let config = RunnableConfig::default();
+        let ctx = crate::graph::RunContext::<i32>::new(config);
+        let result = graph.invoke_with_context(0, ctx).await.unwrap();
+        assert_eq!(result, 3, "invoke_with_context should produce same result as invoke");
+    }
+
+    /// **Scenario**: invoke_with_context with store passes store to RunContext.
+    #[tokio::test]
+    async fn invoke_with_context_with_store() {
+        use crate::memory::InMemoryStore;
+
+        let graph = build_two_step_graph();
+        let config = RunnableConfig::default();
+        let store = Arc::new(InMemoryStore::new());
+        let ctx = crate::graph::RunContext::<i32>::new(config)
+            .with_store(store.clone());
+
+        assert!(ctx.store().is_some(), "store should be set");
+        let result = graph.invoke_with_context(0, ctx).await.unwrap();
+        assert_eq!(result, 3);
+    }
+
+    /// **Scenario**: invoke_with_context with runtime_context passes custom context data.
+    #[tokio::test]
+    async fn invoke_with_context_with_runtime_context() {
+        let graph = build_two_step_graph();
+        let config = RunnableConfig::default();
+        let ctx = crate::graph::RunContext::<i32>::new(config)
+            .with_runtime_context(serde_json::json!({"user_id": "test_user", "session": 123}));
+
+        assert!(ctx.runtime_context().is_some(), "runtime_context should be set");
+        let runtime_ctx = ctx.runtime_context().unwrap();
+        assert_eq!(runtime_ctx["user_id"], "test_user");
+        assert_eq!(runtime_ctx["session"], 123);
+
+        let result = graph.invoke_with_context(0, ctx).await.unwrap();
+        assert_eq!(result, 3);
+    }
+
+    /// **Scenario**: invoke_with_context with previous state sets previous correctly.
+    #[tokio::test]
+    async fn invoke_with_context_with_previous() {
+        let graph = build_two_step_graph();
+        let config = RunnableConfig::default();
+        let ctx = crate::graph::RunContext::<i32>::new(config)
+            .with_previous(100);
+
+        assert_eq!(ctx.previous(), Some(&100), "previous should be set to 100");
+        let result = graph.invoke_with_context(0, ctx).await.unwrap();
+        assert_eq!(result, 3);
+    }
+
+    // === StateUpdater Integration Tests ===
+
+    #[derive(Clone, Debug, PartialEq)]
+    struct MessageState {
+        messages: Vec<String>,
+        count: i32,
+    }
+
+    /// Node that adds a message and increments count
+    #[derive(Clone)]
+    struct AddMessageNode {
+        id: &'static str,
+        message: &'static str,
+    }
+
+    #[async_trait]
+    impl Node<MessageState> for AddMessageNode {
+        fn id(&self) -> &str {
+            self.id
+        }
+
+        async fn run(&self, _state: MessageState) -> Result<(MessageState, Next), AgentError> {
+            // Return just the new message and count increment
+            Ok((
+                MessageState {
+                    messages: vec![self.message.to_string()],
+                    count: 1,
+                },
+                Next::Continue,
+            ))
+        }
+    }
+
+    /// **Scenario**: Custom StateUpdater appends messages instead of replacing.
+    #[tokio::test]
+    async fn invoke_with_custom_state_updater_appends_messages() {
+        use crate::channels::FieldBasedUpdater;
+
+        // Create graph with custom updater that appends messages
+        let updater = FieldBasedUpdater::new(|current: &mut MessageState, update: &MessageState| {
+            current.messages.extend(update.messages.iter().cloned());
+            current.count += update.count;
+        });
+
+        let mut graph = StateGraph::<MessageState>::new()
+            .with_state_updater(Arc::new(updater));
+
+        graph.add_node(
+            "first",
+            Arc::new(AddMessageNode {
+                id: "first",
+                message: "Hello",
+            }),
+        );
+        graph.add_node(
+            "second",
+            Arc::new(AddMessageNode {
+                id: "second",
+                message: "World",
+            }),
+        );
+        graph.add_edge(START, "first");
+        graph.add_edge("first", "second");
+        graph.add_edge("second", END);
+
+        let compiled = graph.compile().expect("graph compiles");
+
+        let initial_state = MessageState {
+            messages: vec!["Start".to_string()],
+            count: 0,
+        };
+
+        let result = compiled.invoke(initial_state, None).await.unwrap();
+
+        // With custom updater, messages should be appended
+        assert_eq!(
+            result.messages,
+            vec!["Start".to_string(), "Hello".to_string(), "World".to_string()],
+            "messages should be appended"
+        );
+        assert_eq!(result.count, 2, "count should be incremented twice");
+    }
+
+    /// **Scenario**: Default behavior (ReplaceUpdater) replaces entire state.
+    #[tokio::test]
+    async fn invoke_default_replaces_state() {
+        let mut graph = StateGraph::<MessageState>::new();
+
+        graph.add_node(
+            "first",
+            Arc::new(AddMessageNode {
+                id: "first",
+                message: "Hello",
+            }),
+        );
+        graph.add_node(
+            "second",
+            Arc::new(AddMessageNode {
+                id: "second",
+                message: "World",
+            }),
+        );
+        graph.add_edge(START, "first");
+        graph.add_edge("first", "second");
+        graph.add_edge("second", END);
+
+        let compiled = graph.compile().expect("graph compiles");
+
+        let initial_state = MessageState {
+            messages: vec!["Start".to_string()],
+            count: 0,
+        };
+
+        let result = compiled.invoke(initial_state, None).await.unwrap();
+
+        // With default ReplaceUpdater, only the last state should remain
+        assert_eq!(
+            result.messages,
+            vec!["World".to_string()],
+            "messages should be replaced"
+        );
+        assert_eq!(result.count, 1, "count should be 1 from last node");
     }
 }
