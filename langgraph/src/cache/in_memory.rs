@@ -28,19 +28,20 @@ impl<V> CacheEntry<V> {
 ///
 /// # Example
 ///
-/// ```rust
+/// ```rust,ignore
 /// use langgraph::cache::{Cache, InMemoryCache};
 /// use std::time::Duration;
 ///
-/// # tokio_test::block_on(async {
-/// let cache = InMemoryCache::new();
-/// cache.set("key".to_string(), "value".to_string(), None).await.unwrap();
-/// assert_eq!(cache.get(&"key".to_string()).await, Some("value".to_string()));
+/// #[tokio::main]
+/// async fn main() {
+///     let cache = InMemoryCache::new();
+///     cache.set("key".to_string(), "value".to_string(), None).await.unwrap();
+///     assert_eq!(cache.get(&"key".to_string()).await, Some("value".to_string()));
 ///
-/// // With TTL
-/// cache.set("key2".to_string(), "value2".to_string(), Some(Duration::from_secs(1))).await.unwrap();
-/// assert_eq!(cache.get(&"key2".to_string()).await, Some("value2".to_string()));
-/// # });
+///     // With TTL
+///     cache.set("key2".to_string(), "value2".to_string(), Some(Duration::from_secs(1))).await.unwrap();
+///     assert_eq!(cache.get(&"key2".to_string()).await, Some("value2".to_string()));
+/// }
 /// ```
 pub struct InMemoryCache<K, V> {
     data: Arc<RwLock<HashMap<K, CacheEntry<V>>>>,

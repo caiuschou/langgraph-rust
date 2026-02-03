@@ -4,6 +4,8 @@
 
 use thiserror::Error;
 
+use crate::graph::GraphInterrupt;
+
 /// Agent execution error.
 ///
 /// Returned by `Agent::run` when a step fails. Aligns with LangGraph-style
@@ -13,6 +15,20 @@ pub enum AgentError {
     /// Execution failed with a message (e.g. LLM call failed, tool error).
     #[error("execution failed: {0}")]
     ExecutionFailed(String),
+
+    /// Graph execution was interrupted.
+    ///
+    /// This error is raised when a node requests an interrupt for human-in-the-loop
+    /// scenarios. The graph executor can catch this error, save a checkpoint,
+    /// and later resume execution with user input.
+    #[error("graph interrupted: {0}")]
+    Interrupted(GraphInterrupt),
+}
+
+impl From<GraphInterrupt> for AgentError {
+    fn from(interrupt: GraphInterrupt) -> Self {
+        AgentError::Interrupted(interrupt)
+    }
 }
 
 #[cfg(test)]
