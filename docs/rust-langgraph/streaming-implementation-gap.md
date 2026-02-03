@@ -27,10 +27,10 @@ Python LangGraph 提供完整的 streaming 系统，支持多种 stream 模式�
 | **values** | 每步后流式输出完整状态 | `StreamEvent::Values`，run_loop 每节点后发送 | ✅ 已实现 |
 | **updates** | 每步后流式输出增量更新（node_id + state） | `StreamEvent::Updates`，run_loop 每节点后发送 | ✅ 已实现 |
 | **messages** | LLM 逐 token 流式输出 `(message_chunk, metadata)` | `ThinkNode.run_with_context()` + `LlmClient.invoke_stream()` | ✅ 已实现 |
-| **custom** | 节点/工具通过 `get_stream_writer()` 发送自定义数据 | 有 `StreamEvent::Custom(Value)` 类型，无 writer API | ⚠️ 仅有类型 |
-| **checkpoints** | checkpoint 创建时发出事件 | 无 | ❌ 未实现 |
-| **tasks** | 任务开始/结束事件 | 无 | ❌ 未实现 |
-| **debug** | 组合 checkpoints + tasks | 无 | ❌ 未实现 |
+| **custom** | 节点/工具通过 `get_stream_writer()` 发送自定义数据 | `StreamWriter` + `ToolStreamWriter` API | ✅ 已完成 |
+| **checkpoints** | checkpoint 创建时发出事件 | `StreamMode::Checkpoints`, `CheckpointEvent` | ✅ 已实现 |
+| **tasks** | 任务开始/结束事件 | `StreamMode::Tasks`, `TaskStart`, `TaskEnd` | ✅ 已实现 |
+| **debug** | 组合 checkpoints + tasks | `StreamMode::Debug` (包含两者) | ✅ 已实现 |
 
 ### 2.2 各模式说明与使用场景
 
@@ -300,15 +300,51 @@ pub struct RunContext<S> {
 
 | 组件 | 说明 |
 |------|------|
-| `StreamEvent::Custom(Value)` | 已定义 |
-| `Node::run_with_context` | 默认实现调用 `run()` 并忽略 `_ctx` |
-| 节点可访问 `ctx.stream_tx` | 是，但需覆盖 `run_with_context` |
-| 工具 | 工具通过 `ActNode` 调用，无法直接拿到 `RunContext`，需通过参数或中间层注入 |
+| `StreamEvent::Custom(Value)` | ✅ 已定义 |
+| `StreamWriter` | ✅ 已实现，封装 stream sender 和 mode 检查 |
+| `RunContext::stream_writer()` | ✅ 从 RunContext 创建 StreamWriter |
+| `RunContext::emit_custom()` | ✅ 便捷方法，直接发送 Custom 事件 |
+| 节点可访问 `ctx.stream_tx` | ✅ 是，通过 `run_with_context` |
+| `ToolStreamWriter` | ✅ 已实现，类型擦除的工具流写入器 |
+| `ToolCallContext::stream_writer` | ✅ 已实现，工具可访问 stream writer |
+| `ToolCallContext::emit_custom()` | ✅ 已实现，工具便捷发送 Custom 事件 |
+| `ActNode::run_with_context` | ✅ 已实现，创建并传递 ToolStreamWriter 给工具 |
 
-**缺口**：
+**节点使用示例**：
 
-1. 无 `get_stream_writer` 或等价 API，节点需自行从 `RunContext` 解构 `stream_tx` 并检查 `stream_mode.contains(&StreamMode::Custom)`。
-2. 工具侧无标准方式获取 writer，需设计注入路径（如通过 `RunnableConfig` 或专用 context）。
+```rust
+async fn run_with_context(&self, state: S, ctx: &RunContext<S>) -> Result<(S, Next), AgentError> {
+    // 方法 1: 使用 StreamWriter
+    let writer = ctx.stream_writer();
+    writer.emit_custom(serde_json::json!({"progress": 50})).await;
+    
+    // 方法 2: 使用便捷方法
+    ctx.emit_custom(serde_json::json!({"status": "done"})).await;
+    
+    Ok((state, Next::Continue))
+}
+```
+
+**工具使用示例**：
+
+```rust
+async fn call(&self, args: Value, ctx: Option<&ToolCallContext>) -> Result<ToolCallContent, ToolSourceError> {
+    if let Some(ctx) = ctx {
+        // 发送进度更新
+        ctx.emit_custom(serde_json::json!({"status": "starting"}));
+        
+        // 或使用 stream_writer
+        if let Some(writer) = &ctx.stream_writer {
+            writer.emit_custom(serde_json::json!({"progress": 50}));
+        }
+    }
+    
+    // 执行工具逻辑...
+    Ok(ToolCallContent { text: "Done".to_string() })
+}
+```
+
+**全部已完成** ✅
 
 ---
 
@@ -349,8 +385,8 @@ pub struct RunContext<S> {
 3. **LLM 层无流式抽象**  
    `LlmClient` 仅有 `invoke()`，返回完整 `LlmResponse`。要支持 Messages streaming，需新增如 `fn stream(...) -> impl Stream<Item = MessageChunk>` 或回调式 API，并在 ThinkNode 的 `run_with_context` 中连接 `stream_tx`。
 
-4. **工具层无 stream writer 注入**  
-   工具通过 `ActNode` 调用，ActNode 不将 `RunContext` 传给工具。要实现 Custom streaming，需设计工具如何获得 writer（例如通过 `config` 或工具参数）。
+4. ~~**工具层无 stream writer 注入**~~  
+   ~~工具通过 `ActNode` 调用，ActNode 不将 `RunContext` 传给工具。~~ **已解决**：`ActNode` 现在实现 `run_with_context`，创建 `ToolStreamWriter` 并通过 `ToolCallContext::stream_writer` 传递给工具。工具可通过 `ctx.emit_custom()` 或 `ctx.stream_writer.emit_custom()` 发送 Custom 事件。
 
 ---
 
@@ -363,11 +399,11 @@ pub struct RunContext<S> {
 | T1 | 为 `LlmClient` 添加 `stream()` 或 `invoke_stream()` 方法 | 高 | ✅ 已完成 |
 | T2 | `ThinkNode` 实现 `run_with_context`，在 `stream_mode` 含 Messages 时使用流式 LLM 并发送 `StreamEvent::Messages` | 高 | ✅ 已完成 |
 | T3 | `ChatOpenAI` 实现流式 API（如 `async_openai` 的 stream 接口） | 高 | ✅ 已完成 |
-| T4 | 设计 `StreamWriter` 或 `get_stream_writer` 等价 API，供节点使用 | 中 | 待办 |
-| T5 | 支持 Custom：节点通过 `ctx.stream_tx` 发送 `StreamEvent::Custom`，文档化用法 | 中 | 待办 |
-| T6 | 工具 Custom streaming：设计 writer 注入路径（config 或工具参数） | 中 | 待办 |
-| T7 | checkpoints stream 模式：在 `cp.put` 后向 stream 发送 checkpoint 事件 | 低 | 待办 |
-| T8 | tasks / debug stream 模式（如需要） | 低 | 待办 |
+| T4 | 设计 `StreamWriter` 或 `get_stream_writer` 等价 API，供节点使用 | 中 | ✅ 已完成 |
+| T5 | 支持 Custom：节点通过 `ctx.stream_tx` 发送 `StreamEvent::Custom`，文档化用法 | 中 | ✅ 已完成 |
+| T6 | 工具 Custom streaming：设计 writer 注入路径（config 或工具参数） | 中 | ✅ 已完成 |
+| T7 | checkpoints stream 模式：在 `cp.put` 后向 stream 发送 checkpoint 事件 | 低 | ✅ 已完成 |
+| T8 | tasks / debug stream 模式（如需要） | 低 | ✅ 已完成 |
 | T9 | 子图 streaming（如有子图设计） | 低 | 待办 |
 
 ### 8.2 依赖关系
