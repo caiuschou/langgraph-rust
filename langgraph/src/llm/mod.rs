@@ -3,8 +3,18 @@
 //! Design: docs/rust-langgraph/13-react-agent-design.md §8.2 stage 2.1–2.2.
 //! ThinkNode depends on a callable that returns assistant text and optional
 //! tool_calls; this module defines the trait and a mock implementation.
+//!
+//! # Streaming Support
+//!
+//! The `LlmClient` trait supports streaming via `invoke_stream()`, which accepts
+//! an optional `Sender<MessageChunk>` for emitting tokens as they arrive.
+//! Implementations that support streaming (like `ChatOpenAI`) will send chunks
+//! through the channel; others (like `MockLlm`) can use the default implementation
+//! that calls `invoke()` and optionally sends the full content as one chunk.
 
 mod mock;
+
+use tokio::sync::mpsc;
 
 /// Tool choice mode for chat completions: when tools are present, controls whether
 /// the model may choose (auto), must not use (none), or must use (required).
@@ -48,6 +58,7 @@ use async_trait::async_trait;
 use crate::error::AgentError;
 use crate::message::Message;
 use crate::state::ToolCall;
+use crate::stream::MessageChunk;
 
 /// Response from an LLM completion: assistant message text and optional tool calls.
 ///
@@ -65,10 +76,56 @@ pub struct LlmResponse {
 /// ThinkNode calls this to produce the next assistant message and any tool
 /// invocations. Implementations: `MockLlm` (fixed response), `ChatOpenAI` (real API, feature `openai`).
 ///
+/// # Streaming
+///
+/// The trait supports streaming via `invoke_stream()`. When `chunk_tx` is `Some`,
+/// implementations should send `MessageChunk` tokens through the channel as they
+/// arrive from the LLM. The method still returns the complete `LlmResponse` at the end.
+///
+/// Default implementation calls `invoke()` and optionally sends the full content
+/// as a single chunk.
+///
 /// **Interaction**: Used by ThinkNode; see docs/rust-langgraph/13-react-agent-design.md §4 and §8.2.
 #[async_trait]
 pub trait LlmClient: Send + Sync {
     /// Invoke one turn: read messages, return assistant content and optional tool_calls.
     /// Aligns with LangChain's `invoke` / `ainvoke` (single-call API).
     async fn invoke(&self, messages: &[Message]) -> Result<LlmResponse, AgentError>;
+
+    /// Streaming variant: invoke with optional chunk sender for token streaming.
+    ///
+    /// When `chunk_tx` is `Some`, implementations should send `MessageChunk` tokens
+    /// through the channel as they arrive. The method returns the complete `LlmResponse`
+    /// after all tokens are collected.
+    ///
+    /// Default implementation calls `invoke()` and sends the full content as one chunk.
+    ///
+    /// # Arguments
+    ///
+    /// * `messages` - Input messages (system, user, assistant history)
+    /// * `chunk_tx` - Optional sender for streaming message chunks
+    ///
+    /// # Returns
+    ///
+    /// Complete `LlmResponse` with full content and any tool_calls.
+    async fn invoke_stream(
+        &self,
+        messages: &[Message],
+        chunk_tx: Option<mpsc::Sender<MessageChunk>>,
+    ) -> Result<LlmResponse, AgentError> {
+        let response = self.invoke(messages).await?;
+
+        // Default: send full content as single chunk if streaming is enabled
+        if let Some(tx) = chunk_tx {
+            if !response.content.is_empty() {
+                let _ = tx
+                    .send(MessageChunk {
+                        content: response.content.clone(),
+                    })
+                    .await;
+            }
+        }
+
+        Ok(response)
+    }
 }

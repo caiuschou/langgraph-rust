@@ -4,15 +4,24 @@
 //! explicit config). Optional tools can be set for function/tool calling;
 //! when present, API may return `tool_calls` in the response.
 //!
+//! # Streaming
+//!
+//! Implements `invoke_stream()` for token-by-token streaming. Uses the OpenAI
+//! streaming API (`create_stream`) and sends `MessageChunk` through the provided
+//! channel as tokens arrive. Tool calls are accumulated from stream chunks.
+//!
 //! **Interaction**: Implements `LlmClient`; used by ThinkNode like `MockLlm`.
 //! Depends on `async_openai` (feature `openai`).
 
 use async_trait::async_trait;
+use tokio::sync::mpsc;
+use tokio_stream::StreamExt;
 
 use crate::error::AgentError;
 use crate::llm::{LlmClient, LlmResponse};
 use crate::message::Message;
 use crate::state::ToolCall;
+use crate::stream::MessageChunk;
 use crate::tool_source::{ToolSource, ToolSourceError, ToolSpec};
 
 use async_openai::{
@@ -195,6 +204,146 @@ impl LlmClient for ChatOpenAI {
 
         Ok(LlmResponse {
             content,
+            tool_calls,
+        })
+    }
+
+    /// Streaming variant: sends message chunks as they arrive from OpenAI.
+    ///
+    /// Uses OpenAI's streaming API to receive tokens incrementally. Each content
+    /// delta is sent through `chunk_tx` as a `MessageChunk`. Tool calls are
+    /// accumulated from stream chunks and returned in the final `LlmResponse`.
+    async fn invoke_stream(
+        &self,
+        messages: &[Message],
+        chunk_tx: Option<mpsc::Sender<MessageChunk>>,
+    ) -> Result<LlmResponse, AgentError> {
+        // If no streaming requested, use non-streaming path
+        if chunk_tx.is_none() {
+            return self.invoke(messages).await;
+        }
+
+        let chunk_tx = chunk_tx.unwrap();
+        let openai_messages = Self::messages_to_request(messages);
+        let mut args = CreateChatCompletionRequestArgs::default();
+        args.model(self.model.clone());
+        args.messages(openai_messages);
+        args.stream(true);
+
+        if let Some(ref tools) = self.tools {
+            let chat_tools: Vec<ChatCompletionTools> = tools
+                .iter()
+                .map(|t| {
+                    ChatCompletionTools::Function(ChatCompletionTool {
+                        function: FunctionObject {
+                            name: t.name.clone(),
+                            description: t.description.clone(),
+                            parameters: Some(t.input_schema.clone()),
+                            ..Default::default()
+                        },
+                    })
+                })
+                .collect();
+            args.tools(chat_tools);
+        }
+
+        if let Some(t) = self.temperature {
+            args.temperature(t);
+        }
+
+        if let Some(mode) = self.tool_choice {
+            let opt = match mode {
+                ToolChoiceMode::Auto => ToolChoiceOptions::Auto,
+                ToolChoiceMode::None => ToolChoiceOptions::None,
+                ToolChoiceMode::Required => ToolChoiceOptions::Required,
+            };
+            args.tool_choice(ChatCompletionToolChoiceOption::Mode(opt));
+        }
+
+        let request = args.build().map_err(|e| {
+            AgentError::ExecutionFailed(format!("OpenAI request build failed: {}", e))
+        })?;
+
+        let mut stream = self
+            .client
+            .chat()
+            .create_stream(request)
+            .await
+            .map_err(|e| AgentError::ExecutionFailed(format!("OpenAI stream error: {}", e)))?;
+
+        // Accumulate content and tool calls from stream
+        let mut full_content = String::new();
+        // Tool calls accumulator: index -> (id, name, arguments)
+        let mut tool_call_map: std::collections::HashMap<u32, (String, String, String)> =
+            std::collections::HashMap::new();
+
+        while let Some(result) = stream.next().await {
+            let response = result
+                .map_err(|e| AgentError::ExecutionFailed(format!("OpenAI stream error: {}", e)))?;
+
+            for choice in response.choices {
+                let delta = &choice.delta;
+
+                // Handle content delta
+                if let Some(ref content) = delta.content {
+                    if !content.is_empty() {
+                        full_content.push_str(content);
+                        // Send chunk to channel (ignore errors if receiver dropped)
+                        let _ = chunk_tx
+                            .send(MessageChunk {
+                                content: content.clone(),
+                            })
+                            .await;
+                    }
+                }
+
+                // Handle tool calls delta (accumulated by index)
+                if let Some(ref tool_calls) = delta.tool_calls {
+                    for tc in tool_calls {
+                        let entry = tool_call_map.entry(tc.index).or_insert_with(|| {
+                            (
+                                tc.id.clone().unwrap_or_default(),
+                                String::new(),
+                                String::new(),
+                            )
+                        });
+
+                        // Update id if provided
+                        if let Some(ref id) = tc.id {
+                            if !id.is_empty() {
+                                entry.0 = id.clone();
+                            }
+                        }
+
+                        // Accumulate function name and arguments
+                        if let Some(ref func) = tc.function {
+                            if let Some(ref name) = func.name {
+                                entry.1.push_str(name);
+                            }
+                            if let Some(ref args) = func.arguments {
+                                entry.2.push_str(args);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Convert accumulated tool calls to our format
+        let mut tool_calls: Vec<ToolCall> = tool_call_map
+            .into_iter()
+            .map(|(_, (id, name, arguments))| ToolCall {
+                name,
+                arguments,
+                id: if id.is_empty() { None } else { Some(id) },
+            })
+            .collect();
+
+        // Sort by name for deterministic order
+        tool_calls.sort_by(|a, b| a.name.cmp(&b.name));
+
+        Ok(LlmResponse {
+            content: full_content,
             tool_calls,
         })
     }
