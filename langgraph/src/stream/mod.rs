@@ -55,9 +55,28 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
 
     #[derive(Clone, Debug, PartialEq)]
     struct DummyState(i32);
+
+    /// **Scenario**: StreamMode four variants are distinct, Eq, and usable in HashSet.
+    #[test]
+    fn stream_mode_four_variants_hashset_equality() {
+        let v = StreamMode::Values;
+        let u = StreamMode::Updates;
+        let m = StreamMode::Messages;
+        let c = StreamMode::Custom;
+        assert_eq!(v, StreamMode::Values);
+        assert_ne!(v, u);
+        assert_ne!(u, m);
+        assert_ne!(m, c);
+        assert_ne!(c, v);
+        let set: HashSet<StreamMode> = [v, u, m, c].into_iter().collect();
+        assert_eq!(set.len(), 4, "all four modes distinct in HashSet");
+        assert!(set.contains(&StreamMode::Values));
+        assert!(set.contains(&StreamMode::Custom));
+    }
 
     /// **Scenario**: StreamEvent variants carry expected data.
     #[test]
