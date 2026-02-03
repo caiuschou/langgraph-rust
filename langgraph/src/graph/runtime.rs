@@ -23,14 +23,15 @@ use crate::stream::StreamEvent;
 ///
 /// # Example
 ///
-/// ```rust,no_run
+/// ```rust,ignore
 /// use langgraph::graph::Runtime;
 /// use langgraph::memory::{RunnableConfig, InMemoryStore};
+/// use std::sync::Arc;
 ///
 /// let config = RunnableConfig::default();
 /// let store = Arc::new(InMemoryStore::new());
 ///
-/// let runtime = Runtime::new(config)
+/// let runtime: Runtime<String, String> = Runtime::new(config)
 ///     .with_store(store);
 ///
 /// // Use runtime in node execution

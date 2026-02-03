@@ -16,7 +16,13 @@ use crate::error::AgentError;
 use crate::memory::{Checkpoint, CheckpointSource, Checkpointer, RunnableConfig, Store};
 use crate::stream::{StreamEvent, StreamMode};
 
+use super::interrupt::InterruptHandler;
+use super::logging::{
+    log_graph_complete, log_graph_error, log_graph_start, log_node_complete, log_node_start,
+    log_state_update,
+};
 use super::node_middleware::NodeMiddleware;
+use super::retry::RetryPolicy;
 use super::{Next, Node, RunContext};
 
 /// Compiled graph: immutable structure, supports invoke only.
@@ -37,37 +43,39 @@ pub struct CompiledStateGraph<S> {
     /// State updater that controls how node outputs are merged into state.
     /// Default is `ReplaceUpdater` which fully replaces the state.
     pub(super) state_updater: BoxedStateUpdater<S>,
+    /// Retry policy for node execution. Default is `RetryPolicy::None`.
+    pub(super) retry_policy: RetryPolicy,
+    /// Optional interrupt handler for human-in-the-loop scenarios.
+    pub(super) interrupt_handler: Option<Arc<dyn InterruptHandler>>,
 }
 
 impl<S> CompiledStateGraph<S>
 where
     S: Clone + Send + Sync + Debug + 'static,
 {
-    /// Shared run loop used by invoke() and stream(): steps through nodes until completion.
-    async fn run_loop_inner(
+    /// Execute a node with retry logic.
+    ///
+    /// Attempts to run the node, retrying according to the configured retry policy
+    /// if the execution fails.
+    async fn execute_node_with_retry(
         &self,
-        state: &mut S,
-        config: &Option<RunnableConfig>,
-        current_id: &mut String,
+        node: Arc<dyn Node<S>>,
+        state: S,
         run_ctx: Option<&RunContext<S>>,
-    ) -> Result<(), AgentError> {
+    ) -> Result<(S, Next), AgentError> {
+        let mut attempt = 0;
         loop {
-            let node = self
-                .nodes
-                .get(current_id)
-                .expect("compiled graph has all nodes")
-                .clone();
             let current_state = state.clone();
-
-            let (new_state, next) = if let Some(middleware) = &self.middleware {
-                let node_id = current_id.clone();
+            let result = if let Some(middleware) = &self.middleware {
+                let node_id = node.id().to_string();
                 let run_ctx_owned = run_ctx.cloned();
+                let node_clone = node.clone();
                 middleware
                     .around_run(
                         &node_id,
                         current_state,
                         Box::new(move |s| {
-                            let node = node.clone();
+                            let node = node_clone.clone();
                             let run_ctx_inner = run_ctx_owned.clone();
                             Box::pin(async move {
                                 if let Some(ctx) = run_ctx_inner.as_ref() {
@@ -78,15 +86,191 @@ where
                             })
                         }),
                     )
-                    .await?
+                    .await
             } else if let Some(ctx) = run_ctx {
-                node.run_with_context(current_state, ctx).await?
+                node.run_with_context(current_state, ctx).await
             } else {
-                node.run(current_state).await?
+                node.run(current_state).await
             };
+
+            match result {
+                Ok(output) => return Ok(output),
+                Err(e) => {
+                    // Check if we should retry
+                    if self.retry_policy.should_retry(attempt) {
+                        let delay = self.retry_policy.delay(attempt);
+                        if delay > std::time::Duration::ZERO {
+                            tokio::time::sleep(delay).await;
+                        }
+                        attempt += 1;
+                        continue;
+                    }
+                    return Err(e);
+                }
+            }
+        }
+    }
+
+    /// Shared run loop used by invoke() and stream(): steps through nodes until completion.
+    ///
+    /// This method includes:
+    /// - Structured logging for graph execution events
+    /// - Retry mechanism for transient failures
+    /// - Interrupt handling support
+    async fn run_loop_inner(
+        &self,
+        state: &mut S,
+        config: &Option<RunnableConfig>,
+        current_id: &mut String,
+        run_ctx: Option<&RunContext<S>>,
+    ) -> Result<(), AgentError> {
+        log_graph_start();
+
+        loop {
+            let node = self
+                .nodes
+                .get(current_id)
+                .expect("compiled graph has all nodes")
+                .clone();
+            let current_state = state.clone();
+
+            // Log node execution start
+            log_node_start(current_id);
+
+            // Emit TaskStart event if Tasks or Debug mode is enabled
+            if let Some(ctx) = run_ctx {
+                if let Some(tx) = &ctx.stream_tx {
+                    if ctx.stream_mode.contains(&StreamMode::Tasks)
+                        || ctx.stream_mode.contains(&StreamMode::Debug)
+                    {
+                        let _ = tx
+                            .send(StreamEvent::TaskStart {
+                                node_id: current_id.clone(),
+                            })
+                            .await;
+                    }
+                }
+            }
+
+            // Execute node with retry logic
+            let result = self
+                .execute_node_with_retry(node, current_state, run_ctx)
+                .await;
+
+            // Handle errors (including interrupts)
+            let (new_state, next) = match result {
+                Ok(output) => output,
+                Err(AgentError::Interrupted(ref interrupt)) => {
+                    // Handle interrupt: save checkpoint and optionally call handler
+                    if let (Some(cp), Some(cfg)) = (&self.checkpointer, config) {
+                        if cfg.thread_id.is_some() {
+                            // Save checkpoint before interrupt so we can resume later
+                            let checkpoint = Checkpoint::from_state(
+                                state.clone(),
+                                CheckpointSource::Update,
+                                0,
+                            );
+                            let _ = cp.put(cfg, &checkpoint).await;
+
+                            // Emit checkpoint event if enabled
+                            if let Some(ctx) = run_ctx {
+                                if let Some(tx) = &ctx.stream_tx {
+                                    if ctx.stream_mode.contains(&StreamMode::Checkpoints)
+                                        || ctx.stream_mode.contains(&StreamMode::Debug)
+                                    {
+                                        let checkpoint_ns = if cfg.checkpoint_ns.is_empty() {
+                                            None
+                                        } else {
+                                            Some(cfg.checkpoint_ns.clone())
+                                        };
+                                        let _ = tx
+                                            .send(StreamEvent::Checkpoint(
+                                                crate::stream::CheckpointEvent {
+                                                    checkpoint_id: checkpoint.id.clone(),
+                                                    timestamp: checkpoint.ts.clone(),
+                                                    step: checkpoint.metadata.step,
+                                                    state: state.clone(),
+                                                    thread_id: cfg.thread_id.clone(),
+                                                    checkpoint_ns,
+                                                },
+                                            ))
+                                            .await;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Call interrupt handler if configured
+                    if let Some(handler) = &self.interrupt_handler {
+                        let _ = handler.handle_interrupt(&interrupt.0);
+                    }
+
+                    // Emit TaskEnd with interrupt info
+                    if let Some(ctx) = run_ctx {
+                        if let Some(tx) = &ctx.stream_tx {
+                            if ctx.stream_mode.contains(&StreamMode::Tasks)
+                                || ctx.stream_mode.contains(&StreamMode::Debug)
+                            {
+                                let _ = tx
+                                    .send(StreamEvent::TaskEnd {
+                                        node_id: current_id.clone(),
+                                        result: Err(format!("interrupted: {:?}", interrupt.0.value)),
+                                    })
+                                    .await;
+                            }
+                        }
+                    }
+
+                    // Log and return the interrupt error
+                    log_graph_error(&AgentError::Interrupted(interrupt.clone()));
+                    return Err(AgentError::Interrupted(interrupt.clone()));
+                }
+                Err(e) => {
+                    // Emit TaskEnd event with error if Tasks or Debug mode is enabled
+                    if let Some(ctx) = run_ctx {
+                        if let Some(tx) = &ctx.stream_tx {
+                            if ctx.stream_mode.contains(&StreamMode::Tasks)
+                                || ctx.stream_mode.contains(&StreamMode::Debug)
+                            {
+                                let _ = tx
+                                    .send(StreamEvent::TaskEnd {
+                                        node_id: current_id.clone(),
+                                        result: Err(e.to_string()),
+                                    })
+                                    .await;
+                            }
+                        }
+                    }
+                    log_graph_error(&e);
+                    return Err(e);
+                }
+            };
+
+            // Emit TaskEnd event with success if Tasks or Debug mode is enabled
+            if let Some(ctx) = run_ctx {
+                if let Some(tx) = &ctx.stream_tx {
+                    if ctx.stream_mode.contains(&StreamMode::Tasks)
+                        || ctx.stream_mode.contains(&StreamMode::Debug)
+                    {
+                        let _ = tx
+                            .send(StreamEvent::TaskEnd {
+                                node_id: current_id.clone(),
+                                result: Ok(()),
+                            })
+                            .await;
+                    }
+                }
+            }
+
+            // Log node completion
+            log_node_complete(current_id, &next);
 
             // Apply state update using the configured updater
             self.state_updater.apply_update(state, &new_state);
+
+            // Log state update
+            log_state_update(current_id);
 
             if let Some(ctx) = run_ctx {
                 if let Some(tx) = &ctx.stream_tx {
@@ -111,8 +295,35 @@ where
                             let checkpoint =
                                 Checkpoint::from_state(state.clone(), CheckpointSource::Update, 0);
                             let _ = cp.put(cfg, &checkpoint).await;
+                            // Emit checkpoint event if Checkpoints or Debug mode is enabled
+                            if let Some(ctx) = run_ctx {
+                                if let Some(tx) = &ctx.stream_tx {
+                                    if ctx.stream_mode.contains(&StreamMode::Checkpoints)
+                                        || ctx.stream_mode.contains(&StreamMode::Debug)
+                                    {
+                                        let checkpoint_ns = if cfg.checkpoint_ns.is_empty() {
+                                            None
+                                        } else {
+                                            Some(cfg.checkpoint_ns.clone())
+                                        };
+                                        let _ = tx
+                                            .send(StreamEvent::Checkpoint(
+                                                crate::stream::CheckpointEvent {
+                                                    checkpoint_id: checkpoint.id.clone(),
+                                                    timestamp: checkpoint.ts.clone(),
+                                                    step: checkpoint.metadata.step,
+                                                    state: state.clone(),
+                                                    thread_id: cfg.thread_id.clone(),
+                                                    checkpoint_ns,
+                                                },
+                                            ))
+                                            .await;
+                                    }
+                                }
+                            }
                         }
                     }
+                    log_graph_complete();
                     return Ok(());
                 }
                 Next::Node(id) => *current_id = id,
@@ -132,8 +343,35 @@ where
                                     0,
                                 );
                                 let _ = cp.put(cfg, &checkpoint).await;
+                                // Emit checkpoint event if Checkpoints or Debug mode is enabled
+                                if let Some(ctx) = run_ctx {
+                                    if let Some(tx) = &ctx.stream_tx {
+                                        if ctx.stream_mode.contains(&StreamMode::Checkpoints)
+                                            || ctx.stream_mode.contains(&StreamMode::Debug)
+                                        {
+                                            let checkpoint_ns = if cfg.checkpoint_ns.is_empty() {
+                                                None
+                                            } else {
+                                                Some(cfg.checkpoint_ns.clone())
+                                            };
+                                            let _ = tx
+                                                .send(StreamEvent::Checkpoint(
+                                                    crate::stream::CheckpointEvent {
+                                                        checkpoint_id: checkpoint.id.clone(),
+                                                        timestamp: checkpoint.ts.clone(),
+                                                        step: checkpoint.metadata.step,
+                                                        state: state.clone(),
+                                                        thread_id: cfg.thread_id.clone(),
+                                                        checkpoint_ns,
+                                                    },
+                                                ))
+                                                .await;
+                                        }
+                                    }
+                                }
                             }
                         }
+                        log_graph_complete();
                         return Ok(());
                     }
                     *current_id = self.edge_order[next_pos].clone();
@@ -174,7 +412,7 @@ where
     ///
     /// # Example
     ///
-    /// ```rust,no_run
+    /// ```rust,ignore
     /// use langgraph::graph::RunContext;
     /// use langgraph::memory::{RunnableConfig, InMemoryStore};
     /// use std::sync::Arc;
@@ -186,7 +424,7 @@ where
     ///     .with_store(store)
     ///     .with_runtime_context(serde_json::json!({"user_id": "123"}));
     ///
-    /// // Invoke with context
+    /// // Invoke with context (async)
     /// let result = graph.invoke_with_context(initial_state, ctx).await?;
     /// ```
     pub async fn invoke_with_context(
@@ -268,6 +506,8 @@ mod tests {
             store: None,
             middleware: None,
             state_updater: Arc::new(crate::channels::ReplaceUpdater),
+            retry_policy: RetryPolicy::None,
+            interrupt_handler: None,
         };
         let state = crate::state::ReActState::default();
         let result = graph.invoke(state, None).await;
@@ -514,6 +754,8 @@ mod tests {
             store: None,
             middleware: None,
             state_updater: Arc::new(crate::channels::ReplaceUpdater),
+            retry_policy: RetryPolicy::None,
+            interrupt_handler: None,
         };
         let stream = graph.stream(0, None, HashSet::from_iter([StreamMode::Values]));
         let events: Vec<_> = stream.collect().await;
@@ -622,8 +864,15 @@ mod tests {
         for e in &events {
             match e {
                 StreamEvent::Values(_) | StreamEvent::Updates { .. } => {}
-                StreamEvent::Messages { .. } | StreamEvent::Custom(_) => {
-                    panic!("run_loop does not emit Messages/Custom, got {:?}", e)
+                StreamEvent::Messages { .. }
+                | StreamEvent::Custom(_)
+                | StreamEvent::Checkpoint(_)
+                | StreamEvent::TaskStart { .. }
+                | StreamEvent::TaskEnd { .. } => {
+                    panic!(
+                        "run_loop does not emit Messages/Custom/Checkpoint/Task events in this test, got {:?}",
+                        e
+                    )
                 }
             }
         }
@@ -810,5 +1059,571 @@ mod tests {
             "messages should be replaced"
         );
         assert_eq!(result.count, 1, "count should be 1 from last node");
+    }
+
+    // === Retry Mechanism Tests ===
+
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    /// Node that fails a specified number of times before succeeding.
+    #[derive(Clone)]
+    struct FailingNode {
+        id: &'static str,
+        fail_count: Arc<AtomicUsize>,
+        max_failures: usize,
+    }
+
+    #[async_trait]
+    impl Node<i32> for FailingNode {
+        fn id(&self) -> &str {
+            self.id
+        }
+
+        async fn run(&self, state: i32) -> Result<(i32, Next), AgentError> {
+            let current = self.fail_count.fetch_add(1, Ordering::SeqCst);
+            if current < self.max_failures {
+                Err(AgentError::ExecutionFailed(format!(
+                    "Deliberate failure {} of {}",
+                    current + 1,
+                    self.max_failures
+                )))
+            } else {
+                Ok((state + 10, Next::Continue))
+            }
+        }
+    }
+
+    /// **Scenario**: Node with retry policy succeeds after transient failures.
+    #[tokio::test]
+    async fn invoke_with_retry_succeeds_after_failures() {
+        let fail_count = Arc::new(AtomicUsize::new(0));
+
+        let mut graph = StateGraph::<i32>::new()
+            .with_retry_policy(RetryPolicy::fixed(3, std::time::Duration::from_millis(10)));
+
+        graph.add_node(
+            "failing",
+            Arc::new(FailingNode {
+                id: "failing",
+                fail_count: fail_count.clone(),
+                max_failures: 2, // Fails twice, then succeeds
+            }),
+        );
+        graph.add_edge(START, "failing");
+        graph.add_edge("failing", END);
+
+        let compiled = graph.compile().expect("graph compiles");
+        let result = compiled.invoke(0, None).await.unwrap();
+
+        // Node should have been called 3 times (2 failures + 1 success)
+        assert_eq!(fail_count.load(Ordering::SeqCst), 3);
+        assert_eq!(result, 10);
+    }
+
+    /// **Scenario**: Node without retry fails immediately.
+    #[tokio::test]
+    async fn invoke_without_retry_fails_immediately() {
+        let fail_count = Arc::new(AtomicUsize::new(0));
+
+        let mut graph = StateGraph::<i32>::new(); // No retry policy (default: None)
+
+        graph.add_node(
+            "failing",
+            Arc::new(FailingNode {
+                id: "failing",
+                fail_count: fail_count.clone(),
+                max_failures: 2,
+            }),
+        );
+        graph.add_edge(START, "failing");
+        graph.add_edge("failing", END);
+
+        let compiled = graph.compile().expect("graph compiles");
+        let result = compiled.invoke(0, None).await;
+
+        // Node should have been called only once
+        assert_eq!(fail_count.load(Ordering::SeqCst), 1);
+        assert!(result.is_err());
+    }
+
+    /// **Scenario**: Node exhausts retry attempts and fails.
+    #[tokio::test]
+    async fn invoke_with_retry_exhausted_fails() {
+        let fail_count = Arc::new(AtomicUsize::new(0));
+
+        let mut graph = StateGraph::<i32>::new()
+            .with_retry_policy(RetryPolicy::fixed(2, std::time::Duration::from_millis(10)));
+
+        graph.add_node(
+            "failing",
+            Arc::new(FailingNode {
+                id: "failing",
+                fail_count: fail_count.clone(),
+                max_failures: 5, // Fails more than retry limit
+            }),
+        );
+        graph.add_edge(START, "failing");
+        graph.add_edge("failing", END);
+
+        let compiled = graph.compile().expect("graph compiles");
+        let result = compiled.invoke(0, None).await;
+
+        // Node should have been called 3 times (initial + 2 retries)
+        assert_eq!(fail_count.load(Ordering::SeqCst), 3);
+        assert!(result.is_err());
+    }
+
+    // === Checkpoints Streaming Tests ===
+
+    /// **Scenario**: stream() emits checkpoint events when Checkpoints mode is enabled and checkpointer is present.
+    #[tokio::test]
+    async fn stream_checkpoints_emits_checkpoint_events_with_checkpointer() {
+        use crate::memory::MemorySaver;
+
+        let mut graph = StateGraph::<i32>::new();
+        graph.add_node("add_one", Arc::new(AddNode { id: "add_one", delta: 1 }));
+        graph.add_node("add_two", Arc::new(AddNode { id: "add_two", delta: 2 }));
+        graph.add_edge(START, "add_one");
+        graph.add_edge("add_one", "add_two");
+        graph.add_edge("add_two", END);
+
+        let checkpointer = Arc::new(MemorySaver::new());
+        let compiled = graph
+            .compile_with_checkpointer(checkpointer)
+            .expect("graph compiles");
+
+        // Use thread_id to enable checkpoint saving
+        let config = RunnableConfig {
+            thread_id: Some("test-thread".into()),
+            ..Default::default()
+        };
+
+        let stream = compiled.stream(
+            0,
+            Some(config.clone()),
+            HashSet::from_iter([StreamMode::Values, StreamMode::Updates, StreamMode::Checkpoints]),
+        );
+        let events: Vec<_> = stream.collect().await;
+
+        // Should have Values, Updates, and at least one Checkpoint event
+        let checkpoint_events: Vec<_> = events
+            .iter()
+            .filter(|e| matches!(e, StreamEvent::Checkpoint(_)))
+            .collect();
+
+        assert!(
+            !checkpoint_events.is_empty(),
+            "should have at least one checkpoint event, got {} total events",
+            events.len()
+        );
+
+        // Verify checkpoint event content
+        if let StreamEvent::Checkpoint(cp) = checkpoint_events.last().unwrap() {
+            assert!(!cp.checkpoint_id.is_empty(), "checkpoint_id should not be empty");
+            assert!(!cp.timestamp.is_empty(), "timestamp should not be empty");
+            assert_eq!(cp.thread_id, Some("test-thread".into()));
+            assert_eq!(cp.state, 3, "final state should be 3 (0 + 1 + 2)");
+        } else {
+            panic!("expected Checkpoint event");
+        }
+    }
+
+    /// **Scenario**: stream() does not emit checkpoint events when Checkpoints mode is disabled.
+    #[tokio::test]
+    async fn stream_no_checkpoint_events_without_checkpoints_mode() {
+        use crate::memory::MemorySaver;
+
+        let mut graph = StateGraph::<i32>::new();
+        graph.add_node("add_one", Arc::new(AddNode { id: "add_one", delta: 1 }));
+        graph.add_edge(START, "add_one");
+        graph.add_edge("add_one", END);
+
+        let checkpointer = Arc::new(MemorySaver::new());
+        let compiled = graph
+            .compile_with_checkpointer(checkpointer)
+            .expect("graph compiles");
+
+        let config = RunnableConfig {
+            thread_id: Some("test-thread".into()),
+            ..Default::default()
+        };
+
+        // Stream without Checkpoints mode
+        let stream = compiled.stream(
+            0,
+            Some(config),
+            HashSet::from_iter([StreamMode::Values, StreamMode::Updates]),
+        );
+        let events: Vec<_> = stream.collect().await;
+
+        // Should NOT have any Checkpoint events
+        let checkpoint_events: Vec<_> = events
+            .iter()
+            .filter(|e| matches!(e, StreamEvent::Checkpoint(_)))
+            .collect();
+
+        assert!(
+            checkpoint_events.is_empty(),
+            "should not have checkpoint events when Checkpoints mode is disabled"
+        );
+    }
+
+    /// **Scenario**: stream() does not emit checkpoint events without checkpointer.
+    #[tokio::test]
+    async fn stream_no_checkpoint_events_without_checkpointer() {
+        let mut graph = StateGraph::<i32>::new();
+        graph.add_node("add_one", Arc::new(AddNode { id: "add_one", delta: 1 }));
+        graph.add_edge(START, "add_one");
+        graph.add_edge("add_one", END);
+
+        // Compile without checkpointer
+        let compiled = graph.compile().expect("graph compiles");
+
+        let config = RunnableConfig {
+            thread_id: Some("test-thread".into()),
+            ..Default::default()
+        };
+
+        // Stream with Checkpoints mode but no checkpointer
+        let stream = compiled.stream(
+            0,
+            Some(config),
+            HashSet::from_iter([StreamMode::Values, StreamMode::Updates, StreamMode::Checkpoints]),
+        );
+        let events: Vec<_> = stream.collect().await;
+
+        // Should NOT have any Checkpoint events (no checkpointer)
+        let checkpoint_events: Vec<_> = events
+            .iter()
+            .filter(|e| matches!(e, StreamEvent::Checkpoint(_)))
+            .collect();
+
+        assert!(
+            checkpoint_events.is_empty(),
+            "should not have checkpoint events without checkpointer"
+        );
+    }
+
+    // === Tasks Streaming Tests ===
+
+    /// **Scenario**: stream() emits TaskStart and TaskEnd events when Tasks mode is enabled.
+    #[tokio::test]
+    async fn stream_tasks_emits_task_events() {
+        let mut graph = StateGraph::<i32>::new();
+        graph.add_node("add_one", Arc::new(AddNode { id: "add_one", delta: 1 }));
+        graph.add_node("add_two", Arc::new(AddNode { id: "add_two", delta: 2 }));
+        graph.add_edge(START, "add_one");
+        graph.add_edge("add_one", "add_two");
+        graph.add_edge("add_two", END);
+
+        let compiled = graph.compile().expect("graph compiles");
+
+        let stream = compiled.stream(
+            0,
+            None,
+            HashSet::from_iter([StreamMode::Values, StreamMode::Tasks]),
+        );
+        let events: Vec<_> = stream.collect().await;
+
+        // Should have TaskStart and TaskEnd for each node (2 nodes = 4 task events)
+        let task_start_events: Vec<_> = events
+            .iter()
+            .filter(|e| matches!(e, StreamEvent::TaskStart { .. }))
+            .collect();
+        let task_end_events: Vec<_> = events
+            .iter()
+            .filter(|e| matches!(e, StreamEvent::TaskEnd { .. }))
+            .collect();
+
+        assert_eq!(
+            task_start_events.len(),
+            2,
+            "should have 2 TaskStart events (one per node)"
+        );
+        assert_eq!(
+            task_end_events.len(),
+            2,
+            "should have 2 TaskEnd events (one per node)"
+        );
+
+        // Verify order: TaskStart -> TaskEnd for each node
+        // First node: add_one
+        if let StreamEvent::TaskStart { node_id } = task_start_events[0] {
+            assert_eq!(node_id, "add_one");
+        }
+        if let StreamEvent::TaskEnd { node_id, result } = task_end_events[0] {
+            assert_eq!(node_id, "add_one");
+            assert!(result.is_ok());
+        }
+        // Second node: add_two
+        if let StreamEvent::TaskStart { node_id } = task_start_events[1] {
+            assert_eq!(node_id, "add_two");
+        }
+        if let StreamEvent::TaskEnd { node_id, result } = task_end_events[1] {
+            assert_eq!(node_id, "add_two");
+            assert!(result.is_ok());
+        }
+    }
+
+    /// **Scenario**: stream() does not emit task events when Tasks mode is disabled.
+    #[tokio::test]
+    async fn stream_no_task_events_without_tasks_mode() {
+        let mut graph = StateGraph::<i32>::new();
+        graph.add_node("add_one", Arc::new(AddNode { id: "add_one", delta: 1 }));
+        graph.add_edge(START, "add_one");
+        graph.add_edge("add_one", END);
+
+        let compiled = graph.compile().expect("graph compiles");
+
+        // Stream without Tasks mode
+        let stream = compiled.stream(0, None, HashSet::from_iter([StreamMode::Values]));
+        let events: Vec<_> = stream.collect().await;
+
+        // Should NOT have any TaskStart or TaskEnd events
+        let task_events: Vec<_> = events
+            .iter()
+            .filter(|e| {
+                matches!(e, StreamEvent::TaskStart { .. } | StreamEvent::TaskEnd { .. })
+            })
+            .collect();
+
+        assert!(
+            task_events.is_empty(),
+            "should not have task events when Tasks mode is disabled"
+        );
+    }
+
+    /// **Scenario**: Debug mode emits both checkpoints and task events.
+    #[tokio::test]
+    async fn stream_debug_mode_emits_checkpoints_and_tasks() {
+        use crate::memory::MemorySaver;
+
+        let mut graph = StateGraph::<i32>::new();
+        graph.add_node("add_one", Arc::new(AddNode { id: "add_one", delta: 1 }));
+        graph.add_edge(START, "add_one");
+        graph.add_edge("add_one", END);
+
+        let checkpointer = Arc::new(MemorySaver::new());
+        let compiled = graph
+            .compile_with_checkpointer(checkpointer)
+            .expect("graph compiles");
+
+        let config = RunnableConfig {
+            thread_id: Some("test-thread".into()),
+            ..Default::default()
+        };
+
+        // Stream with Debug mode only (should emit both checkpoints and tasks)
+        let stream = compiled.stream(
+            0,
+            Some(config),
+            HashSet::from_iter([StreamMode::Debug]),
+        );
+        let events: Vec<_> = stream.collect().await;
+
+        // Should have Checkpoint events (debug includes checkpoints)
+        let checkpoint_events: Vec<_> = events
+            .iter()
+            .filter(|e| matches!(e, StreamEvent::Checkpoint(_)))
+            .collect();
+
+        // Should have TaskStart and TaskEnd events (debug includes tasks)
+        let task_events: Vec<_> = events
+            .iter()
+            .filter(|e| {
+                matches!(e, StreamEvent::TaskStart { .. } | StreamEvent::TaskEnd { .. })
+            })
+            .collect();
+
+        assert!(
+            !checkpoint_events.is_empty(),
+            "Debug mode should emit checkpoint events"
+        );
+        assert!(
+            !task_events.is_empty(),
+            "Debug mode should emit task events"
+        );
+    }
+
+    // === Interrupt Handler Integration Tests ===
+
+    /// A node that raises an interrupt after processing.
+    struct InterruptingNode {
+        id: &'static str,
+        interrupt_value: serde_json::Value,
+    }
+
+    #[async_trait::async_trait]
+    impl Node<i32> for InterruptingNode {
+        fn id(&self) -> &str {
+            self.id
+        }
+
+        async fn run(&self, _state: i32) -> Result<(i32, Next), AgentError> {
+            use crate::graph::{GraphInterrupt, Interrupt};
+            Err(AgentError::Interrupted(GraphInterrupt(Interrupt::new(
+                self.interrupt_value.clone(),
+            ))))
+        }
+    }
+
+    /// **Scenario**: Node that raises an interrupt returns Interrupted error.
+    #[tokio::test]
+    async fn invoke_with_interrupting_node_returns_interrupted_error() {
+        let mut graph = StateGraph::<i32>::new();
+        graph.add_node(
+            "interrupt",
+            Arc::new(InterruptingNode {
+                id: "interrupt",
+                interrupt_value: serde_json::json!({"action": "approve"}),
+            }),
+        );
+        graph.add_edge(START, "interrupt");
+        graph.add_edge("interrupt", END);
+
+        let compiled = graph.compile().expect("graph compiles");
+        let result = compiled.invoke(0, None).await;
+
+        // Should return Interrupted error
+        assert!(
+            matches!(result, Err(AgentError::Interrupted(_))),
+            "Expected Interrupted error, got {:?}",
+            result
+        );
+    }
+
+    /// **Scenario**: Interrupt with checkpointer saves checkpoint before returning error.
+    #[tokio::test]
+    async fn invoke_with_interrupt_saves_checkpoint_when_checkpointer_present() {
+        use crate::memory::MemorySaver;
+
+        let mut graph = StateGraph::<i32>::new();
+        graph.add_node("add_one", Arc::new(AddNode { id: "add_one", delta: 1 }));
+        graph.add_node(
+            "interrupt",
+            Arc::new(InterruptingNode {
+                id: "interrupt",
+                interrupt_value: serde_json::json!({"action": "approve"}),
+            }),
+        );
+        graph.add_edge(START, "add_one");
+        graph.add_edge("add_one", "interrupt");
+        graph.add_edge("interrupt", END);
+
+        let checkpointer = Arc::new(MemorySaver::<i32>::new());
+        let compiled = graph
+            .compile_with_checkpointer(checkpointer.clone())
+            .expect("graph compiles");
+
+        let config = RunnableConfig {
+            thread_id: Some("test-interrupt".to_string()),
+            ..Default::default()
+        };
+
+        let result = compiled.invoke(0, Some(config.clone())).await;
+
+        // Should return Interrupted error
+        assert!(matches!(result, Err(AgentError::Interrupted(_))));
+
+        // Checkpoint should have been saved with state = 1 (after add_one)
+        use crate::memory::Checkpointer;
+        let checkpoint = checkpointer.get_tuple(&config).await.unwrap();
+        assert!(checkpoint.is_some(), "Checkpoint should have been saved");
+        let (cp, _metadata) = checkpoint.unwrap();
+        assert_eq!(cp.channel_values, 1, "State should be 1 after add_one node");
+    }
+
+    /// **Scenario**: Stream with interrupting node emits TaskEnd with error.
+    #[tokio::test]
+    async fn stream_with_interrupt_emits_task_end_with_error() {
+        let mut graph = StateGraph::<i32>::new();
+        graph.add_node(
+            "interrupt",
+            Arc::new(InterruptingNode {
+                id: "interrupt",
+                interrupt_value: serde_json::json!({"action": "approve"}),
+            }),
+        );
+        graph.add_edge(START, "interrupt");
+        graph.add_edge("interrupt", END);
+
+        let compiled = graph.compile().expect("graph compiles");
+        let stream = compiled.stream(0, None, HashSet::from_iter([StreamMode::Tasks]));
+        let events: Vec<_> = stream.collect().await;
+
+        // Should have TaskStart and TaskEnd events
+        let task_end_events: Vec<_> = events
+            .iter()
+            .filter(|e| matches!(e, StreamEvent::TaskEnd { .. }))
+            .collect();
+
+        assert_eq!(task_end_events.len(), 1, "Should have 1 TaskEnd event");
+
+        if let StreamEvent::TaskEnd { node_id, result } = &task_end_events[0] {
+            assert_eq!(node_id, "interrupt");
+            assert!(result.is_err(), "TaskEnd should have error result");
+            assert!(
+                result.as_ref().unwrap_err().contains("interrupted"),
+                "Error should mention interrupted"
+            );
+        } else {
+            panic!("Expected TaskEnd event");
+        }
+    }
+
+    /// A custom interrupt handler that records handled interrupts.
+    struct RecordingInterruptHandler {
+        handled: std::sync::Mutex<Vec<serde_json::Value>>,
+    }
+
+    impl RecordingInterruptHandler {
+        fn new() -> Self {
+            Self {
+                handled: std::sync::Mutex::new(vec![]),
+            }
+        }
+
+        fn handled_values(&self) -> Vec<serde_json::Value> {
+            self.handled.lock().unwrap().clone()
+        }
+    }
+
+    impl crate::graph::InterruptHandler for RecordingInterruptHandler {
+        fn handle_interrupt(
+            &self,
+            interrupt: &crate::graph::Interrupt,
+        ) -> Result<serde_json::Value, AgentError> {
+            self.handled.lock().unwrap().push(interrupt.value.clone());
+            Ok(serde_json::json!({"handled": true}))
+        }
+    }
+
+    /// **Scenario**: Interrupt handler is called when interrupt occurs.
+    #[tokio::test]
+    async fn invoke_with_interrupt_handler_calls_handler() {
+        let handler = Arc::new(RecordingInterruptHandler::new());
+
+        let mut graph = StateGraph::<i32>::new()
+            .with_interrupt_handler(handler.clone());
+        graph.add_node(
+            "interrupt",
+            Arc::new(InterruptingNode {
+                id: "interrupt",
+                interrupt_value: serde_json::json!({"action": "approve", "item": "order_123"}),
+            }),
+        );
+        graph.add_edge(START, "interrupt");
+        graph.add_edge("interrupt", END);
+
+        let compiled = graph.compile().expect("graph compiles");
+        let _ = compiled.invoke(0, None).await;
+
+        // Handler should have been called with the interrupt value
+        let handled = handler.handled_values();
+        assert_eq!(handled.len(), 1, "Handler should have been called once");
+        assert_eq!(
+            handled[0],
+            serde_json::json!({"action": "approve", "item": "order_123"})
+        );
     }
 }

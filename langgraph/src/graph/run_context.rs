@@ -2,16 +2,36 @@
 //!
 //! Holds runnable config, optional stream sender, selected stream modes, and runtime context.
 //! This module integrates the Runtime functionality for a unified execution context.
+//!
+//! # StreamWriter Integration
+//!
+//! `RunContext` provides methods to create a `StreamWriter` and emit events directly:
+//!
+//! ```rust,ignore
+//! use langgraph::graph::RunContext;
+//!
+//! async fn run_with_context(&self, state: S, ctx: &RunContext<S>) -> Result<(S, Next), AgentError> {
+//!     // Method 1: Use stream_writer() to get a StreamWriter
+//!     let writer = ctx.stream_writer();
+//!     writer.emit_custom(serde_json::json!({"progress": 50})).await;
+//!     
+//!     // Method 2: Use convenience methods directly on RunContext
+//!     ctx.emit_custom(serde_json::json!({"status": "done"})).await;
+//!     
+//!     Ok((state, Next::Continue))
+//! }
+//! ```
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::sync::Arc;
 
+use serde_json::Value;
 use tokio::sync::mpsc;
 
 use crate::managed::ManagedValue;
 use crate::memory::{RunnableConfig, Store};
-use crate::stream::{StreamEvent, StreamMode};
+use crate::stream::{StreamEvent, StreamMode, StreamWriter};
 
 /// Run context passed into nodes for streaming-aware execution.
 ///
@@ -161,5 +181,71 @@ where
     /// Gets the runtime context if available.
     pub fn runtime_context(&self) -> Option<&serde_json::Value> {
         self.runtime_context.as_ref()
+    }
+
+    // === StreamWriter Integration ===
+
+    /// Creates a StreamWriter from this context.
+    ///
+    /// The StreamWriter encapsulates the stream sender and mode checking,
+    /// providing a convenient API for emitting events.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let writer = ctx.stream_writer();
+    /// writer.emit_custom(serde_json::json!({"progress": 50})).await;
+    /// writer.emit_message("Hello", "node_id").await;
+    /// ```
+    pub fn stream_writer(&self) -> StreamWriter<S> {
+        StreamWriter::new(self.stream_tx.clone(), self.stream_mode.clone())
+    }
+
+    /// Emits a custom JSON payload directly from the context.
+    ///
+    /// This is a convenience method that creates a StreamWriter and calls emit_custom.
+    /// Only sends if `StreamMode::Custom` is enabled.
+    ///
+    /// Returns `true` if the event was sent, `false` otherwise.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// ctx.emit_custom(serde_json::json!({"status": "processing"})).await;
+    /// ```
+    pub async fn emit_custom(&self, value: Value) -> bool {
+        self.stream_writer().emit_custom(value).await
+    }
+
+    /// Emits a message chunk directly from the context.
+    ///
+    /// This is a convenience method that creates a StreamWriter and calls emit_message.
+    /// Only sends if `StreamMode::Messages` is enabled.
+    ///
+    /// Returns `true` if the event was sent, `false` otherwise.
+    ///
+    /// # Arguments
+    ///
+    /// * `content` - The message content
+    /// * `node_id` - The node ID that produced this message
+    pub async fn emit_message(&self, content: impl Into<String>, node_id: impl Into<String>) -> bool {
+        self.stream_writer().emit_message(content, node_id).await
+    }
+
+    /// Checks if a specific stream mode is enabled.
+    ///
+    /// Useful for nodes that want to conditionally perform expensive operations
+    /// only when the corresponding stream mode is enabled.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// if ctx.is_streaming_mode(StreamMode::Custom) {
+    ///     // Perform expensive computation for progress reporting
+    ///     ctx.emit_custom(serde_json::json!({"progress": compute_progress()})).await;
+    /// }
+    /// ```
+    pub fn is_streaming_mode(&self, mode: StreamMode) -> bool {
+        self.stream_mode.contains(&mode)
     }
 }

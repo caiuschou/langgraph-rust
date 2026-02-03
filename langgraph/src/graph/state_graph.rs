@@ -19,7 +19,9 @@ use crate::channels::{BoxedStateUpdater, ReplaceUpdater};
 use crate::graph::compile_error::CompilationError;
 use crate::graph::compiled::CompiledStateGraph;
 use crate::graph::node::Node;
+use crate::graph::interrupt::InterruptHandler;
 use crate::graph::node_middleware::NodeMiddleware;
+use crate::graph::retry::RetryPolicy;
 use crate::memory::{Checkpointer, Store};
 
 /// Sentinel for graph entry: use as `from_id` in `add_edge(START, first_node_id)`.
@@ -51,6 +53,10 @@ pub struct StateGraph<S> {
     /// Optional state updater; when set, controls how node outputs are merged into state.
     /// Default is `ReplaceUpdater` which fully replaces the state.
     state_updater: Option<BoxedStateUpdater<S>>,
+    /// Retry policy for node execution. Default is `RetryPolicy::None`.
+    retry_policy: RetryPolicy,
+    /// Optional interrupt handler for human-in-the-loop scenarios.
+    interrupt_handler: Option<Arc<dyn InterruptHandler>>,
 }
 
 impl<S> Default for StateGraph<S>
@@ -74,6 +80,8 @@ where
             store: None,
             middleware: None,
             state_updater: None,
+            retry_policy: RetryPolicy::None,
+            interrupt_handler: None,
         }
     }
 
@@ -123,6 +131,54 @@ where
     pub fn with_state_updater(self, updater: BoxedStateUpdater<S>) -> Self {
         Self {
             state_updater: Some(updater),
+            ..self
+        }
+    }
+
+    /// Attaches a retry policy for node execution.
+    ///
+    /// When a node execution fails, the retry policy determines if and how
+    /// the execution should be retried. Default is `RetryPolicy::None` (no retries).
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use langgraph::graph::{StateGraph, RetryPolicy};
+    /// use std::time::Duration;
+    ///
+    /// let graph = StateGraph::<String>::new()
+    ///     .with_retry_policy(RetryPolicy::exponential(
+    ///         3,
+    ///         Duration::from_millis(100),
+    ///         Duration::from_secs(5),
+    ///         2.0,
+    ///     ));
+    /// ```
+    pub fn with_retry_policy(self, retry_policy: RetryPolicy) -> Self {
+        Self {
+            retry_policy,
+            ..self
+        }
+    }
+
+    /// Attaches an interrupt handler for human-in-the-loop scenarios.
+    ///
+    /// The interrupt handler is called when a node raises an interrupt.
+    /// This is useful for scenarios where execution needs to pause for
+    /// user input or approval.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use langgraph::graph::{StateGraph, DefaultInterruptHandler};
+    /// use std::sync::Arc;
+    ///
+    /// let graph = StateGraph::<String>::new()
+    ///     .with_interrupt_handler(Arc::new(DefaultInterruptHandler));
+    /// ```
+    pub fn with_interrupt_handler(self, handler: Arc<dyn InterruptHandler>) -> Self {
+        Self {
+            interrupt_handler: Some(handler),
             ..self
         }
     }
@@ -295,6 +351,8 @@ where
             store: self.store,
             middleware,
             state_updater,
+            retry_policy: self.retry_policy,
+            interrupt_handler: self.interrupt_handler,
         })
     }
 }
