@@ -21,6 +21,8 @@ sqlite = ["dep:rusqlite"]
 lance = ["dep:lancedb", "dep:arrow-array", "dep:arrow-schema", "dep:futures"]
 # In-memory store with vector search for dev/tests
 in-memory-vector = ["dep:dashmap"]
+# Structured logging via tracing crate
+tracing = ["dep:tracing"]
 
 [dependencies]
 tokio = { workspace = true }
@@ -46,6 +48,8 @@ lancedb = { version = "0.23", optional = true }
 arrow-array = { version = "56.2", optional = true }
 arrow-schema = { version = "56.2", optional = true }
 futures = { version = "0.3", optional = true }
+# Optional: Structured logging via tracing crate (feature "tracing").
+tracing = { version = "0.1", optional = true }
 
 [dev-dependencies]
 serde = { version = "1.0", features = ["derive"] }
