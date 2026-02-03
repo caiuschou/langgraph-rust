@@ -187,7 +187,8 @@ mod tests {
     #[test]
     fn test_runtime_with_context() {
         let config = RunnableConfig::default();
-        let runtime: Runtime<String, String> = Runtime::new(config).with_context("user_123".to_string());
+        let runtime: Runtime<String, String> =
+            Runtime::new(config).with_context("user_123".to_string());
         assert_eq!(runtime.context, Some("user_123".to_string()));
     }
 

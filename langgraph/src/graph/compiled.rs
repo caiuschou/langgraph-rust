@@ -165,11 +165,8 @@ where
                     if let (Some(cp), Some(cfg)) = (&self.checkpointer, config) {
                         if cfg.thread_id.is_some() {
                             // Save checkpoint before interrupt so we can resume later
-                            let checkpoint = Checkpoint::from_state(
-                                state.clone(),
-                                CheckpointSource::Update,
-                                0,
-                            );
+                            let checkpoint =
+                                Checkpoint::from_state(state.clone(), CheckpointSource::Update, 0);
                             let _ = cp.put(cfg, &checkpoint).await;
 
                             // Emit checkpoint event if enabled
@@ -215,7 +212,10 @@ where
                                 let _ = tx
                                     .send(StreamEvent::TaskEnd {
                                         node_id: current_id.clone(),
-                                        result: Err(format!("interrupted: {:?}", interrupt.0.value)),
+                                        result: Err(format!(
+                                            "interrupted: {:?}",
+                                            interrupt.0.value
+                                        )),
                                     })
                                     .await;
                             }
@@ -664,12 +664,13 @@ mod tests {
         };
         let out = compiled.invoke(0, Some(config)).await.unwrap();
         assert_eq!(out, 5);
-        let tuple = cp.get_tuple(&RunnableConfig {
-            thread_id: Some("tid-end".into()),
-            ..Default::default()
-        })
-        .await
-        .unwrap();
+        let tuple = cp
+            .get_tuple(&RunnableConfig {
+                thread_id: Some("tid-end".into()),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
         assert!(tuple.is_some(), "checkpoint on Next::End should be saved");
     }
 
@@ -759,7 +760,11 @@ mod tests {
         };
         let stream = graph.stream(0, None, HashSet::from_iter([StreamMode::Values]));
         let events: Vec<_> = stream.collect().await;
-        assert!(events.is_empty(), "empty graph should emit 0 events, got {}", events.len());
+        assert!(
+            events.is_empty(),
+            "empty graph should emit 0 events, got {}",
+            events.len()
+        );
     }
 
     fn build_single_node_graph() -> CompiledStateGraph<i32> {
@@ -888,7 +893,10 @@ mod tests {
         let config = RunnableConfig::default();
         let ctx = crate::graph::RunContext::<i32>::new(config);
         let result = graph.invoke_with_context(0, ctx).await.unwrap();
-        assert_eq!(result, 3, "invoke_with_context should produce same result as invoke");
+        assert_eq!(
+            result, 3,
+            "invoke_with_context should produce same result as invoke"
+        );
     }
 
     /// **Scenario**: invoke_with_context with store passes store to RunContext.
@@ -899,8 +907,7 @@ mod tests {
         let graph = build_two_step_graph();
         let config = RunnableConfig::default();
         let store = Arc::new(InMemoryStore::new());
-        let ctx = crate::graph::RunContext::<i32>::new(config)
-            .with_store(store.clone());
+        let ctx = crate::graph::RunContext::<i32>::new(config).with_store(store.clone());
 
         assert!(ctx.store().is_some(), "store should be set");
         let result = graph.invoke_with_context(0, ctx).await.unwrap();
@@ -915,7 +922,10 @@ mod tests {
         let ctx = crate::graph::RunContext::<i32>::new(config)
             .with_runtime_context(serde_json::json!({"user_id": "test_user", "session": 123}));
 
-        assert!(ctx.runtime_context().is_some(), "runtime_context should be set");
+        assert!(
+            ctx.runtime_context().is_some(),
+            "runtime_context should be set"
+        );
         let runtime_ctx = ctx.runtime_context().unwrap();
         assert_eq!(runtime_ctx["user_id"], "test_user");
         assert_eq!(runtime_ctx["session"], 123);
@@ -929,8 +939,7 @@ mod tests {
     async fn invoke_with_context_with_previous() {
         let graph = build_two_step_graph();
         let config = RunnableConfig::default();
-        let ctx = crate::graph::RunContext::<i32>::new(config)
-            .with_previous(100);
+        let ctx = crate::graph::RunContext::<i32>::new(config).with_previous(100);
 
         assert_eq!(ctx.previous(), Some(&100), "previous should be set to 100");
         let result = graph.invoke_with_context(0, ctx).await.unwrap();
@@ -976,13 +985,13 @@ mod tests {
         use crate::channels::FieldBasedUpdater;
 
         // Create graph with custom updater that appends messages
-        let updater = FieldBasedUpdater::new(|current: &mut MessageState, update: &MessageState| {
-            current.messages.extend(update.messages.iter().cloned());
-            current.count += update.count;
-        });
+        let updater =
+            FieldBasedUpdater::new(|current: &mut MessageState, update: &MessageState| {
+                current.messages.extend(update.messages.iter().cloned());
+                current.count += update.count;
+            });
 
-        let mut graph = StateGraph::<MessageState>::new()
-            .with_state_updater(Arc::new(updater));
+        let mut graph = StateGraph::<MessageState>::new().with_state_updater(Arc::new(updater));
 
         graph.add_node(
             "first",
@@ -1014,7 +1023,11 @@ mod tests {
         // With custom updater, messages should be appended
         assert_eq!(
             result.messages,
-            vec!["Start".to_string(), "Hello".to_string(), "World".to_string()],
+            vec![
+                "Start".to_string(),
+                "Hello".to_string(),
+                "World".to_string()
+            ],
             "messages should be appended"
         );
         assert_eq!(result.count, 2, "count should be incremented twice");
@@ -1181,8 +1194,20 @@ mod tests {
         use crate::memory::MemorySaver;
 
         let mut graph = StateGraph::<i32>::new();
-        graph.add_node("add_one", Arc::new(AddNode { id: "add_one", delta: 1 }));
-        graph.add_node("add_two", Arc::new(AddNode { id: "add_two", delta: 2 }));
+        graph.add_node(
+            "add_one",
+            Arc::new(AddNode {
+                id: "add_one",
+                delta: 1,
+            }),
+        );
+        graph.add_node(
+            "add_two",
+            Arc::new(AddNode {
+                id: "add_two",
+                delta: 2,
+            }),
+        );
         graph.add_edge(START, "add_one");
         graph.add_edge("add_one", "add_two");
         graph.add_edge("add_two", END);
@@ -1201,7 +1226,11 @@ mod tests {
         let stream = compiled.stream(
             0,
             Some(config.clone()),
-            HashSet::from_iter([StreamMode::Values, StreamMode::Updates, StreamMode::Checkpoints]),
+            HashSet::from_iter([
+                StreamMode::Values,
+                StreamMode::Updates,
+                StreamMode::Checkpoints,
+            ]),
         );
         let events: Vec<_> = stream.collect().await;
 
@@ -1219,7 +1248,10 @@ mod tests {
 
         // Verify checkpoint event content
         if let StreamEvent::Checkpoint(cp) = checkpoint_events.last().unwrap() {
-            assert!(!cp.checkpoint_id.is_empty(), "checkpoint_id should not be empty");
+            assert!(
+                !cp.checkpoint_id.is_empty(),
+                "checkpoint_id should not be empty"
+            );
             assert!(!cp.timestamp.is_empty(), "timestamp should not be empty");
             assert_eq!(cp.thread_id, Some("test-thread".into()));
             assert_eq!(cp.state, 3, "final state should be 3 (0 + 1 + 2)");
@@ -1234,7 +1266,13 @@ mod tests {
         use crate::memory::MemorySaver;
 
         let mut graph = StateGraph::<i32>::new();
-        graph.add_node("add_one", Arc::new(AddNode { id: "add_one", delta: 1 }));
+        graph.add_node(
+            "add_one",
+            Arc::new(AddNode {
+                id: "add_one",
+                delta: 1,
+            }),
+        );
         graph.add_edge(START, "add_one");
         graph.add_edge("add_one", END);
 
@@ -1272,7 +1310,13 @@ mod tests {
     #[tokio::test]
     async fn stream_no_checkpoint_events_without_checkpointer() {
         let mut graph = StateGraph::<i32>::new();
-        graph.add_node("add_one", Arc::new(AddNode { id: "add_one", delta: 1 }));
+        graph.add_node(
+            "add_one",
+            Arc::new(AddNode {
+                id: "add_one",
+                delta: 1,
+            }),
+        );
         graph.add_edge(START, "add_one");
         graph.add_edge("add_one", END);
 
@@ -1288,7 +1332,11 @@ mod tests {
         let stream = compiled.stream(
             0,
             Some(config),
-            HashSet::from_iter([StreamMode::Values, StreamMode::Updates, StreamMode::Checkpoints]),
+            HashSet::from_iter([
+                StreamMode::Values,
+                StreamMode::Updates,
+                StreamMode::Checkpoints,
+            ]),
         );
         let events: Vec<_> = stream.collect().await;
 
@@ -1310,8 +1358,20 @@ mod tests {
     #[tokio::test]
     async fn stream_tasks_emits_task_events() {
         let mut graph = StateGraph::<i32>::new();
-        graph.add_node("add_one", Arc::new(AddNode { id: "add_one", delta: 1 }));
-        graph.add_node("add_two", Arc::new(AddNode { id: "add_two", delta: 2 }));
+        graph.add_node(
+            "add_one",
+            Arc::new(AddNode {
+                id: "add_one",
+                delta: 1,
+            }),
+        );
+        graph.add_node(
+            "add_two",
+            Arc::new(AddNode {
+                id: "add_two",
+                delta: 2,
+            }),
+        );
         graph.add_edge(START, "add_one");
         graph.add_edge("add_one", "add_two");
         graph.add_edge("add_two", END);
@@ -1369,7 +1429,13 @@ mod tests {
     #[tokio::test]
     async fn stream_no_task_events_without_tasks_mode() {
         let mut graph = StateGraph::<i32>::new();
-        graph.add_node("add_one", Arc::new(AddNode { id: "add_one", delta: 1 }));
+        graph.add_node(
+            "add_one",
+            Arc::new(AddNode {
+                id: "add_one",
+                delta: 1,
+            }),
+        );
         graph.add_edge(START, "add_one");
         graph.add_edge("add_one", END);
 
@@ -1383,7 +1449,10 @@ mod tests {
         let task_events: Vec<_> = events
             .iter()
             .filter(|e| {
-                matches!(e, StreamEvent::TaskStart { .. } | StreamEvent::TaskEnd { .. })
+                matches!(
+                    e,
+                    StreamEvent::TaskStart { .. } | StreamEvent::TaskEnd { .. }
+                )
             })
             .collect();
 
@@ -1399,7 +1468,13 @@ mod tests {
         use crate::memory::MemorySaver;
 
         let mut graph = StateGraph::<i32>::new();
-        graph.add_node("add_one", Arc::new(AddNode { id: "add_one", delta: 1 }));
+        graph.add_node(
+            "add_one",
+            Arc::new(AddNode {
+                id: "add_one",
+                delta: 1,
+            }),
+        );
         graph.add_edge(START, "add_one");
         graph.add_edge("add_one", END);
 
@@ -1414,11 +1489,7 @@ mod tests {
         };
 
         // Stream with Debug mode only (should emit both checkpoints and tasks)
-        let stream = compiled.stream(
-            0,
-            Some(config),
-            HashSet::from_iter([StreamMode::Debug]),
-        );
+        let stream = compiled.stream(0, Some(config), HashSet::from_iter([StreamMode::Debug]));
         let events: Vec<_> = stream.collect().await;
 
         // Should have Checkpoint events (debug includes checkpoints)
@@ -1431,7 +1502,10 @@ mod tests {
         let task_events: Vec<_> = events
             .iter()
             .filter(|e| {
-                matches!(e, StreamEvent::TaskStart { .. } | StreamEvent::TaskEnd { .. })
+                matches!(
+                    e,
+                    StreamEvent::TaskStart { .. } | StreamEvent::TaskEnd { .. }
+                )
             })
             .collect();
 
@@ -1498,7 +1572,13 @@ mod tests {
         use crate::memory::MemorySaver;
 
         let mut graph = StateGraph::<i32>::new();
-        graph.add_node("add_one", Arc::new(AddNode { id: "add_one", delta: 1 }));
+        graph.add_node(
+            "add_one",
+            Arc::new(AddNode {
+                id: "add_one",
+                delta: 1,
+            }),
+        );
         graph.add_node(
             "interrupt",
             Arc::new(InterruptingNode {
@@ -1603,8 +1683,7 @@ mod tests {
     async fn invoke_with_interrupt_handler_calls_handler() {
         let handler = Arc::new(RecordingInterruptHandler::new());
 
-        let mut graph = StateGraph::<i32>::new()
-            .with_interrupt_handler(handler.clone());
+        let mut graph = StateGraph::<i32>::new().with_interrupt_handler(handler.clone());
         graph.add_node(
             "interrupt",
             Arc::new(InterruptingNode {

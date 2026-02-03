@@ -19,9 +19,7 @@ mod visualization;
 
 pub use compile_error::CompilationError;
 pub use compiled::CompiledStateGraph;
-pub use interrupt::{
-    DefaultInterruptHandler, GraphInterrupt, Interrupt, InterruptHandler,
-};
+pub use interrupt::{DefaultInterruptHandler, GraphInterrupt, Interrupt, InterruptHandler};
 pub use logging::{
     log_graph_complete, log_graph_error, log_graph_start, log_node_complete, log_node_start,
     log_state_update,

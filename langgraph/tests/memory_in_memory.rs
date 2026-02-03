@@ -1,7 +1,7 @@
 //! Unit tests for InMemoryStore (Store trait). No persistence; namespace isolation, put/get/list/search.
 //! Run: cargo test -p langgraph --test memory_in_memory
 
-use langgraph::memory::{InMemoryStore, Store};
+use langgraph::memory::{InMemoryStore, SearchOptions, Store};
 use serde_json::json;
 
 #[tokio::test]
@@ -19,9 +19,18 @@ async fn in_memory_store_put_get_list_search() {
     assert!(keys.contains(&"k1".into()));
     assert!(keys.contains(&"k2".into()));
 
-    let hits = store.search(&ns, Some("v1"), None).await.unwrap();
+    let hits = store
+        .search(
+            &ns,
+            SearchOptions {
+                query: Some("v1".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
     assert_eq!(hits.len(), 1);
-    assert_eq!(hits[0].key, "k1");
+    assert_eq!(hits[0].item.key, "k1");
 }
 
 #[tokio::test]
@@ -63,9 +72,9 @@ async fn in_memory_store_search_no_query_like_list() {
     store.put(&ns, "k1", &json!("a")).await.unwrap();
     store.put(&ns, "k2", &json!("b")).await.unwrap();
 
-    let hits = store.search(&ns, None, None).await.unwrap();
+    let hits = store.search(&ns, SearchOptions::default()).await.unwrap();
     assert_eq!(hits.len(), 2);
-    let keys: Vec<_> = hits.iter().map(|h| h.key.as_str()).collect();
+    let keys: Vec<_> = hits.iter().map(|h| h.item.key.as_str()).collect();
     assert!(keys.contains(&"k1"));
     assert!(keys.contains(&"k2"));
 }
@@ -78,9 +87,28 @@ async fn in_memory_store_search_limit() {
     store.put(&ns, "k2", &json!("y")).await.unwrap();
     store.put(&ns, "k3", &json!("z")).await.unwrap();
 
-    let hits = store.search(&ns, None, Some(2)).await.unwrap();
+    let hits = store
+        .search(
+            &ns,
+            SearchOptions {
+                limit: 2,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
     assert_eq!(hits.len(), 2);
-    let hits_with_query = store.search(&ns, Some("x"), Some(10)).await.unwrap();
+    let hits_with_query = store
+        .search(
+            &ns,
+            SearchOptions {
+                query: Some("x".to_string()),
+                limit: 10,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
     assert_eq!(hits_with_query.len(), 1);
-    assert_eq!(hits_with_query[0].key, "k1");
+    assert_eq!(hits_with_query[0].item.key, "k1");
 }

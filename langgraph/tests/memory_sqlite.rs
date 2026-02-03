@@ -2,7 +2,7 @@
 
 use langgraph::memory::{
     Checkpoint, CheckpointMetadata, CheckpointSource, Checkpointer, JsonSerializer, RunnableConfig,
-    SqliteSaver, SqliteStore, Store,
+    SearchOptions, SqliteSaver, SqliteStore, Store, CHECKPOINT_VERSION,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -26,16 +26,21 @@ async fn sqlite_saver_put_and_get_tuple() {
         user_id: None,
     };
     let checkpoint = Checkpoint {
+        v: CHECKPOINT_VERSION,
         id: "c1".into(),
         ts: "123".into(),
         channel_values: TestState {
             value: "hello".into(),
         },
         channel_versions: HashMap::new(),
+        versions_seen: HashMap::new(),
+        updated_channels: None,
+        pending_sends: Vec::new(),
         metadata: CheckpointMetadata {
             source: CheckpointSource::Update,
             step: 0,
             created_at: None,
+            parents: HashMap::new(),
         },
     };
     let id = saver.put(&config, &checkpoint).await.unwrap();
@@ -79,16 +84,21 @@ async fn sqlite_saver_list() {
     assert!(list.is_empty());
 
     let checkpoint = Checkpoint {
+        v: CHECKPOINT_VERSION,
         id: "c3".into(),
         ts: "456".into(),
         channel_values: TestState {
             value: "world".into(),
         },
         channel_versions: HashMap::new(),
+        versions_seen: HashMap::new(),
+        updated_channels: None,
+        pending_sends: Vec::new(),
         metadata: CheckpointMetadata {
             source: CheckpointSource::Input,
             step: 1,
             created_at: None,
+            parents: HashMap::new(),
         },
     };
     saver.put(&config, &checkpoint).await.unwrap();
@@ -120,9 +130,18 @@ async fn sqlite_store_put_get_list_search() {
     assert!(keys.contains(&"k1".into()));
     assert!(keys.contains(&"k2".into()));
 
-    let hits = store.search(&ns, Some("v1"), None).await.unwrap();
+    let hits = store
+        .search(
+            &ns,
+            SearchOptions {
+                query: Some("v1".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
     assert_eq!(hits.len(), 1);
-    assert_eq!(hits[0].key, "k1");
+    assert_eq!(hits[0].item.key, "k1");
 }
 
 #[tokio::test]

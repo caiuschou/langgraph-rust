@@ -118,19 +118,32 @@ mod tests {
         let cache = InMemoryCache::new();
         assert_eq!(cache.get(&"key".to_string()).await, None);
 
-        cache.set("key".to_string(), "value".to_string(), None).await.unwrap();
-        assert_eq!(cache.get(&"key".to_string()).await, Some("value".to_string()));
+        cache
+            .set("key".to_string(), "value".to_string(), None)
+            .await
+            .unwrap();
+        assert_eq!(
+            cache.get(&"key".to_string()).await,
+            Some("value".to_string())
+        );
     }
 
     #[tokio::test]
     async fn test_in_memory_cache_ttl() {
         let cache = InMemoryCache::new();
         cache
-            .set("key".to_string(), "value".to_string(), Some(Duration::from_millis(100)))
+            .set(
+                "key".to_string(),
+                "value".to_string(),
+                Some(Duration::from_millis(100)),
+            )
             .await
             .unwrap();
 
-        assert_eq!(cache.get(&"key".to_string()).await, Some("value".to_string()));
+        assert_eq!(
+            cache.get(&"key".to_string()).await,
+            Some("value".to_string())
+        );
 
         tokio::time::sleep(Duration::from_millis(150)).await;
         assert_eq!(cache.get(&"key".to_string()).await, None);
@@ -139,7 +152,10 @@ mod tests {
     #[tokio::test]
     async fn test_in_memory_cache_delete() {
         let cache = InMemoryCache::new();
-        cache.set("key".to_string(), "value".to_string(), None).await.unwrap();
+        cache
+            .set("key".to_string(), "value".to_string(), None)
+            .await
+            .unwrap();
         cache.delete(&"key".to_string()).await.unwrap();
         assert_eq!(cache.get(&"key".to_string()).await, None);
     }
@@ -147,8 +163,14 @@ mod tests {
     #[tokio::test]
     async fn test_in_memory_cache_clear() {
         let cache = InMemoryCache::new();
-        cache.set("key1".to_string(), "value1".to_string(), None).await.unwrap();
-        cache.set("key2".to_string(), "value2".to_string(), None).await.unwrap();
+        cache
+            .set("key1".to_string(), "value1".to_string(), None)
+            .await
+            .unwrap();
+        cache
+            .set("key2".to_string(), "value2".to_string(), None)
+            .await
+            .unwrap();
         cache.clear().await.unwrap();
         assert_eq!(cache.get(&"key1".to_string()).await, None);
         assert_eq!(cache.get(&"key2".to_string()).await, None);

@@ -73,8 +73,8 @@ impl Node<ReActState> for ThinkNode {
         state: ReActState,
         ctx: &RunContext<ReActState>,
     ) -> Result<(ReActState, Next), AgentError> {
-        let should_stream = ctx.stream_mode.contains(&StreamMode::Messages)
-            && ctx.stream_tx.is_some();
+        let should_stream =
+            ctx.stream_mode.contains(&StreamMode::Messages) && ctx.stream_tx.is_some();
 
         let response = if should_stream {
             // Create internal channel for message chunks
@@ -99,7 +99,10 @@ impl Node<ReActState> for ThinkNode {
             });
 
             // Call LLM with streaming
-            let result = self.llm.invoke_stream(&state.messages, Some(chunk_tx)).await;
+            let result = self
+                .llm
+                .invoke_stream(&state.messages, Some(chunk_tx))
+                .await;
 
             // Wait for forwarding task to complete (chunk_tx is dropped after invoke_stream)
             let _ = forward_task.await;

@@ -1,10 +1,19 @@
+//! In-memory vector store for semantic search.
+//!
+//! Uses embeddings for semantic similarity search. Not persistent.
+
 use async_trait::async_trait;
 use dashmap::DashMap;
 use serde_json::Value as JsonValue;
+use std::collections::HashSet;
 use std::sync::Arc;
+use std::time::SystemTime;
 
 use crate::memory::embedder::Embedder;
-use crate::memory::store::{Namespace, Store, StoreError, StoreSearchHit};
+use crate::memory::store::{
+    Item, ListNamespacesOptions, MatchCondition, Namespace, NamespaceMatchType, SearchItem,
+    SearchOptions, Store, StoreError, StoreOp, StoreOpResult, StoreSearchHit,
+};
 
 /// Pure in-memory vector store for semantic search.
 ///
@@ -22,6 +31,40 @@ pub struct InMemoryVectorStore {
 struct VectorEntry {
     vector: Vec<f32>,
     value: JsonValue,
+    namespace: Namespace,
+    key: String,
+    created_at: SystemTime,
+    updated_at: SystemTime,
+}
+
+impl VectorEntry {
+    fn new(namespace: Namespace, key: String, value: JsonValue, vector: Vec<f32>) -> Self {
+        let now = SystemTime::now();
+        Self {
+            vector,
+            value,
+            namespace,
+            key,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    fn update(&mut self, value: JsonValue, vector: Vec<f32>) {
+        self.value = value;
+        self.vector = vector;
+        self.updated_at = SystemTime::now();
+    }
+
+    fn to_item(&self) -> Item {
+        Item::with_timestamps(
+            self.namespace.clone(),
+            self.key.clone(),
+            self.value.clone(),
+            self.created_at,
+            self.updated_at,
+        )
+    }
 }
 
 impl InMemoryVectorStore {
@@ -76,6 +119,42 @@ impl InMemoryVectorStore {
             key
         )
     }
+
+    /// Gets the namespace prefix for filtering.
+    fn namespace_prefix(namespace: &Namespace) -> String {
+        format!("{}:", serde_json::to_string(namespace).unwrap_or_default())
+    }
+
+    /// Checks if a namespace matches a condition.
+    fn matches_condition(namespace: &Namespace, condition: &MatchCondition) -> bool {
+        let path = &condition.path;
+
+        match condition.match_type {
+            NamespaceMatchType::Prefix => {
+                if namespace.len() < path.len() {
+                    return false;
+                }
+                for (i, p) in path.iter().enumerate() {
+                    if p != "*" && namespace.get(i) != Some(p) {
+                        return false;
+                    }
+                }
+                true
+            }
+            NamespaceMatchType::Suffix => {
+                if namespace.len() < path.len() {
+                    return false;
+                }
+                let start = namespace.len() - path.len();
+                for (i, p) in path.iter().enumerate() {
+                    if p != "*" && namespace.get(start + i) != Some(p) {
+                        return false;
+                    }
+                }
+                true
+            }
+        }
+    }
 }
 
 #[async_trait]
@@ -95,12 +174,13 @@ impl Store for InMemoryVectorStore {
             .ok_or_else(|| StoreError::EmbeddingError("No vector returned".into()))?;
 
         let compound_key = Self::make_key(namespace, key);
-        let entry = VectorEntry {
-            vector,
-            value: value.clone(),
-        };
 
-        self.data.insert(compound_key, entry);
+        if let Some(mut existing) = self.data.get_mut(&compound_key) {
+            existing.update(value.clone(), vector);
+        } else {
+            let entry = VectorEntry::new(namespace.clone(), key.to_string(), value.clone(), vector);
+            self.data.insert(compound_key, entry);
+        }
 
         Ok(())
     }
@@ -114,15 +194,25 @@ impl Store for InMemoryVectorStore {
             .map(|entry| entry.value.clone()))
     }
 
+    async fn get_item(&self, namespace: &Namespace, key: &str) -> Result<Option<Item>, StoreError> {
+        let compound_key = Self::make_key(namespace, key);
+
+        Ok(self.data.get(&compound_key).map(|entry| entry.to_item()))
+    }
+
+    async fn delete(&self, namespace: &Namespace, key: &str) -> Result<(), StoreError> {
+        let compound_key = Self::make_key(namespace, key);
+        self.data.remove(&compound_key);
+        Ok(())
+    }
+
     async fn list(&self, namespace: &Namespace) -> Result<Vec<String>, StoreError> {
-        let ns_str = serde_json::to_string(namespace).unwrap_or_default();
-        let ns_prefix = format!("{}:", ns_str);
+        let ns_prefix = Self::namespace_prefix(namespace);
 
         let mut keys = Vec::new();
         for entry in self.data.iter() {
             if entry.key().starts_with(&ns_prefix) {
-                let key = entry.key().strip_prefix(&ns_prefix).unwrap_or("");
-                keys.push(key.to_string());
+                keys.push(entry.value().key.clone());
             }
         }
 
@@ -131,14 +221,14 @@ impl Store for InMemoryVectorStore {
 
     async fn search(
         &self,
-        namespace: &Namespace,
-        query: Option<&str>,
-        limit: Option<usize>,
-    ) -> Result<Vec<StoreSearchHit>, StoreError> {
-        let limit = limit.unwrap_or(10).min(1000);
-        let ns_str = serde_json::to_string(namespace).unwrap_or_default();
+        namespace_prefix: &Namespace,
+        options: SearchOptions,
+    ) -> Result<Vec<SearchItem>, StoreError> {
+        let limit = options.limit.min(1000);
+        let ns_prefix = Self::namespace_prefix(namespace_prefix);
 
-        if let Some(q) = query {
+        // Semantic search with query
+        if let Some(ref q) = options.query {
             if !q.is_empty() {
                 let vectors = self.embedder.embed(&[q])?;
                 let query_vec = vectors
@@ -147,7 +237,6 @@ impl Store for InMemoryVectorStore {
                     .ok_or_else(|| StoreError::EmbeddingError("No vector returned".into()))?;
 
                 let mut scores: Vec<(String, f32)> = Vec::new();
-                let ns_prefix = format!("{}:", ns_str);
 
                 for entry in self.data.iter() {
                     if entry.key().starts_with(&ns_prefix) {
@@ -158,17 +247,14 @@ impl Store for InMemoryVectorStore {
 
                 scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
 
-                let hits: Vec<StoreSearchHit> = scores
+                let hits: Vec<SearchItem> = scores
                     .into_iter()
+                    .skip(options.offset)
                     .take(limit)
-                    .map(|(key, score)| StoreSearchHit {
-                        key: key.strip_prefix(&ns_prefix).unwrap_or(&key).to_string(),
-                        value: self
-                            .data
+                    .filter_map(|(key, score)| {
+                        self.data
                             .get(&key)
-                            .map(|e| e.value.clone())
-                            .unwrap_or(JsonValue::Null),
-                        score: Some(score as f64),
+                            .map(|e| SearchItem::with_score(e.to_item(), score as f64))
                     })
                     .collect();
 
@@ -176,29 +262,134 @@ impl Store for InMemoryVectorStore {
             }
         }
 
-        let ns_prefix = format!("{}:", ns_str);
-        let keys: Vec<String> = self
+        // Non-semantic search (no query): return items up to limit
+        let hits: Vec<SearchItem> = self
             .data
             .iter()
             .filter(|e| e.key().starts_with(&ns_prefix))
-            .map(|e| e.key().clone())
+            .skip(options.offset)
             .take(limit)
-            .collect();
-
-        let hits: Vec<StoreSearchHit> = keys
-            .into_iter()
-            .map(|key| StoreSearchHit {
-                key: key.strip_prefix(&ns_prefix).unwrap_or(&key).to_string(),
-                value: self
-                    .data
-                    .get(&key)
-                    .map(|e| e.value.clone())
-                    .unwrap_or(JsonValue::Null),
-                score: None,
-            })
+            .map(|e| SearchItem::from_item(e.to_item()))
             .collect();
 
         Ok(hits)
+    }
+
+    async fn list_namespaces(
+        &self,
+        options: ListNamespacesOptions,
+    ) -> Result<Vec<Namespace>, StoreError> {
+        // Collect unique namespaces
+        let mut namespaces: HashSet<Namespace> = self
+            .data
+            .iter()
+            .map(|e| e.value().namespace.clone())
+            .collect();
+
+        // Apply match conditions
+        if !options.match_conditions.is_empty() {
+            namespaces.retain(|ns| {
+                options
+                    .match_conditions
+                    .iter()
+                    .all(|cond| Self::matches_condition(ns, cond))
+            });
+        }
+
+        // Apply max_depth: truncate namespaces to max_depth
+        let mut result: Vec<Namespace> = if let Some(max_depth) = options.max_depth {
+            namespaces
+                .into_iter()
+                .map(|ns| {
+                    if ns.len() > max_depth {
+                        ns.into_iter().take(max_depth).collect()
+                    } else {
+                        ns
+                    }
+                })
+                .collect::<HashSet<_>>()
+                .into_iter()
+                .collect()
+        } else {
+            namespaces.into_iter().collect()
+        };
+
+        // Sort for deterministic output
+        result.sort();
+
+        // Apply offset and limit
+        if options.offset > 0 {
+            if options.offset >= result.len() {
+                result.clear();
+            } else {
+                result = result.into_iter().skip(options.offset).collect();
+            }
+        }
+        result.truncate(options.limit);
+
+        Ok(result)
+    }
+
+    async fn batch(&self, ops: Vec<StoreOp>) -> Result<Vec<StoreOpResult>, StoreError> {
+        let mut results = Vec::with_capacity(ops.len());
+
+        for op in ops {
+            let result = match op {
+                StoreOp::Get { namespace, key } => {
+                    let item = self.get_item(&namespace, &key).await?;
+                    StoreOpResult::Get(item)
+                }
+                StoreOp::Put {
+                    namespace,
+                    key,
+                    value,
+                } => {
+                    if let Some(v) = value {
+                        self.put(&namespace, &key, &v).await?;
+                    } else {
+                        self.delete(&namespace, &key).await?;
+                    }
+                    StoreOpResult::Put
+                }
+                StoreOp::Search {
+                    namespace_prefix,
+                    options,
+                } => {
+                    let items = self.search(&namespace_prefix, options).await?;
+                    StoreOpResult::Search(items)
+                }
+                StoreOp::ListNamespaces { options } => {
+                    let ns = self.list_namespaces(options).await?;
+                    StoreOpResult::ListNamespaces(ns)
+                }
+            };
+            results.push(result);
+        }
+
+        Ok(results)
+    }
+
+    async fn search_simple(
+        &self,
+        namespace: &Namespace,
+        query: Option<&str>,
+        limit: Option<usize>,
+    ) -> Result<Vec<StoreSearchHit>, StoreError> {
+        let options = SearchOptions {
+            query: query.map(String::from),
+            filter: None,
+            limit: limit.unwrap_or(10),
+            offset: 0,
+        };
+        let results = self.search(namespace, options).await?;
+        Ok(results
+            .into_iter()
+            .map(|si| StoreSearchHit {
+                key: si.item.key,
+                value: si.item.value,
+                score: si.score,
+            })
+            .collect())
     }
 }
 
@@ -256,10 +447,11 @@ mod tests {
             .await
             .unwrap();
 
-        let hits = store.search(&ns, Some("rust"), Some(10)).await.unwrap();
+        let options = SearchOptions::new().with_query("rust").with_limit(10);
+        let hits = store.search(&ns, options).await.unwrap();
 
         assert!(!hits.is_empty());
-        assert!(hits.iter().any(|h| h.key == "key2"));
+        assert!(hits.iter().any(|h| h.item.key == "key2"));
         for hit in &hits {
             assert!(hit.score.is_some());
         }
@@ -289,6 +481,42 @@ mod tests {
 
         let not_found = store.get(&ns, "non_existent").await.unwrap();
         assert_eq!(not_found, None);
+    }
+
+    /// **Scenario**: get_item returns full Item with metadata.
+    #[tokio::test]
+    async fn test_get_item() {
+        let embedder = Arc::new(MockEmbedder::new(1536));
+        let store = InMemoryVectorStore::new(embedder);
+
+        let ns = vec!["test".into()];
+        store
+            .put(&ns, "key1", &serde_json::json!({"text": "hello"}))
+            .await
+            .unwrap();
+
+        let item = store.get_item(&ns, "key1").await.unwrap().unwrap();
+        assert_eq!(item.namespace, ns);
+        assert_eq!(item.key, "key1");
+        assert!(item.created_at <= item.updated_at);
+    }
+
+    /// **Scenario**: delete removes an item.
+    #[tokio::test]
+    async fn test_delete() {
+        let embedder = Arc::new(MockEmbedder::new(1536));
+        let store = InMemoryVectorStore::new(embedder);
+
+        let ns = vec!["test".into()];
+        store
+            .put(&ns, "key1", &serde_json::json!({"text": "hello"}))
+            .await
+            .unwrap();
+
+        assert!(store.get(&ns, "key1").await.unwrap().is_some());
+
+        store.delete(&ns, "key1").await.unwrap();
+        assert!(store.get(&ns, "key1").await.unwrap().is_none());
     }
 
     /// **Scenario**: Store can list all keys in a namespace.
@@ -372,7 +600,8 @@ mod tests {
             .await
             .unwrap();
 
-        let hits = store.search(&ns, None, Some(10)).await.unwrap();
+        let options = SearchOptions::new().with_limit(10);
+        let hits = store.search(&ns, options).await.unwrap();
         assert_eq!(hits.len(), 2);
         for hit in &hits {
             assert!(hit.score.is_none());
@@ -391,7 +620,71 @@ mod tests {
             .await
             .unwrap();
 
-        let hits = store.search(&ns, Some(""), Some(10)).await.unwrap();
+        let options = SearchOptions::new().with_query("").with_limit(10);
+        let hits = store.search(&ns, options).await.unwrap();
         assert_eq!(hits.len(), 1);
+    }
+
+    /// **Scenario**: list_namespaces returns unique namespaces.
+    #[tokio::test]
+    async fn test_list_namespaces() {
+        let embedder = Arc::new(MockEmbedder::new(1536));
+        let store = InMemoryVectorStore::new(embedder);
+
+        store
+            .put(
+                &vec!["users".into(), "u1".into()],
+                "k1",
+                &serde_json::json!(1),
+            )
+            .await
+            .unwrap();
+        store
+            .put(
+                &vec!["users".into(), "u2".into()],
+                "k1",
+                &serde_json::json!(2),
+            )
+            .await
+            .unwrap();
+        store
+            .put(&vec!["docs".into()], "d1", &serde_json::json!(3))
+            .await
+            .unwrap();
+
+        let options = ListNamespacesOptions::new();
+        let namespaces = store.list_namespaces(options).await.unwrap();
+
+        assert_eq!(namespaces.len(), 3);
+    }
+
+    /// **Scenario**: batch executes multiple operations.
+    #[tokio::test]
+    async fn test_batch() {
+        let embedder = Arc::new(MockEmbedder::new(1536));
+        let store = InMemoryVectorStore::new(embedder);
+        let ns: Namespace = vec!["test".into()];
+
+        let ops = vec![
+            StoreOp::Put {
+                namespace: ns.clone(),
+                key: "k1".into(),
+                value: Some(serde_json::json!({"text": "hello"})),
+            },
+            StoreOp::Get {
+                namespace: ns.clone(),
+                key: "k1".into(),
+            },
+        ];
+
+        let results = store.batch(ops).await.unwrap();
+
+        assert_eq!(results.len(), 2);
+        match &results[1] {
+            StoreOpResult::Get(Some(item)) => {
+                assert_eq!(item.key, "k1");
+            }
+            _ => panic!("expected Get result with item"),
+        }
     }
 }

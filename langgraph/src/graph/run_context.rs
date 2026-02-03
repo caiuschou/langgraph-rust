@@ -81,7 +81,6 @@ where
     pub managed_values: HashMap<String, Arc<dyn ManagedValue<serde_json::Value, S>>>,
 
     // === Runtime Integration Fields ===
-
     /// Store for the graph run, enabling persistence and long-term memory.
     ///
     /// When set, nodes can use it for cross-thread memory (e.g., namespace from `config.user_id`).
@@ -228,7 +227,11 @@ where
     ///
     /// * `content` - The message content
     /// * `node_id` - The node ID that produced this message
-    pub async fn emit_message(&self, content: impl Into<String>, node_id: impl Into<String>) -> bool {
+    pub async fn emit_message(
+        &self,
+        content: impl Into<String>,
+        node_id: impl Into<String>,
+    ) -> bool {
         self.stream_writer().emit_message(content, node_id).await
     }
 

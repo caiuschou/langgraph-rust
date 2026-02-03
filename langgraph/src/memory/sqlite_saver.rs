@@ -9,11 +9,13 @@ use async_trait::async_trait;
 use rusqlite::params;
 
 use crate::memory::checkpoint::{
-    Checkpoint, CheckpointListItem, CheckpointMetadata, CheckpointSource,
+    ChannelVersions, Checkpoint, CheckpointListItem, CheckpointMetadata, CheckpointSource,
+    CHECKPOINT_VERSION,
 };
 use crate::memory::checkpointer::{CheckpointError, Checkpointer};
 use crate::memory::config::RunnableConfig;
 use crate::memory::serializer::Serializer;
+use std::collections::HashMap;
 
 fn source_to_str(s: &CheckpointSource) -> &'static str {
     match s {
@@ -218,19 +220,23 @@ where
         };
 
         let channel_values = self.serializer.deserialize(&payload)?;
-        let channel_versions: std::collections::HashMap<String, u64> =
-            serde_json::from_str(&channel_versions_json)
-                .map_err(|e| CheckpointError::Serialization(e.to_string()))?;
+        let channel_versions: ChannelVersions = serde_json::from_str(&channel_versions_json)
+            .map_err(|e| CheckpointError::Serialization(e.to_string()))?;
         let metadata = CheckpointMetadata {
             source: str_to_source(&metadata_source),
-            step: metadata_step as u64,
+            step: metadata_step,
             created_at: i64_to_created_at(metadata_created_at),
+            parents: HashMap::new(),
         };
         let checkpoint = Checkpoint {
+            v: CHECKPOINT_VERSION,
             id: checkpoint_id.clone(),
             ts,
             channel_values,
             channel_versions,
+            versions_seen: HashMap::new(),
+            updated_channels: None,
+            pending_sends: Vec::new(),
             metadata: metadata.clone(),
         };
         Ok(Some((checkpoint, metadata)))
@@ -265,8 +271,9 @@ where
                         checkpoint_id: row.get(0)?,
                         metadata: CheckpointMetadata {
                             source: str_to_source(&row.get::<_, String>(1)?),
-                            step: row.get::<_, i64>(2)? as u64,
+                            step: row.get::<_, i64>(2)?,
                             created_at: i64_to_created_at(row.get(3)?),
+                            parents: HashMap::new(),
                         },
                     })
                 })

@@ -6,6 +6,8 @@
 //! - `LastValue`: Keeps only the last written value
 //! - `EphemeralValue`: Value is cleared after reading
 //! - `BinaryOperatorAggregate`: Aggregates values using a binary operator
+//! - `Topic`: Accumulates values into a list (for message history, etc.)
+//! - `NamedBarrierValue`: Waits until all named values are received
 //!
 //! Additionally, `StateUpdater` provides a way to customize how node outputs are
 //! merged into the graph state:
@@ -15,17 +17,23 @@
 //!
 //! See the implementation plans document for more details.
 
+mod binop;
+mod ephemeral_value;
 mod error;
 mod last_value;
-mod ephemeral_value;
-mod binop;
+mod named_barrier;
+mod topic;
 mod updater;
 
+pub use binop::BinaryOperatorAggregate;
+pub use ephemeral_value::EphemeralValue;
 pub use error::ChannelError;
 pub use last_value::LastValue;
-pub use ephemeral_value::EphemeralValue;
-pub use binop::BinaryOperatorAggregate;
-pub use updater::{StateUpdater, ReplaceUpdater, FieldBasedUpdater, BoxedStateUpdater, boxed_updater};
+pub use named_barrier::{NamedBarrierUpdate, NamedBarrierValue};
+pub use topic::{Topic, TopicSingleWrite};
+pub use updater::{
+    boxed_updater, BoxedStateUpdater, FieldBasedUpdater, ReplaceUpdater, StateUpdater,
+};
 
 use std::fmt::Debug;
 

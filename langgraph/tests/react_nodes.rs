@@ -352,7 +352,10 @@ async fn think_node_run_with_context_no_messages_when_mode_empty() {
     while let Ok(event) = rx.try_recv() {
         events.push(event);
     }
-    assert!(events.is_empty(), "should not emit any events when Messages not in stream_mode");
+    assert!(
+        events.is_empty(),
+        "should not emit any events when Messages not in stream_mode"
+    );
 }
 
 /// **Scenario**: ThinkNode run_with_context works when stream_tx is None.

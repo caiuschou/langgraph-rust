@@ -3,6 +3,7 @@
 
 use langgraph::memory::{
     Checkpoint, CheckpointMetadata, CheckpointSource, MemorySaver, RunnableConfig,
+    CHECKPOINT_VERSION,
 };
 use langgraph::Checkpointer;
 use std::collections::HashMap;
@@ -22,16 +23,21 @@ async fn memory_saver_put_and_get_tuple() {
         user_id: None,
     };
     let checkpoint = Checkpoint {
+        v: CHECKPOINT_VERSION,
         id: "c1".into(),
         ts: "123".into(),
         channel_values: TestState {
             value: "hello".into(),
         },
         channel_versions: HashMap::new(),
+        versions_seen: HashMap::new(),
+        updated_channels: None,
+        pending_sends: Vec::new(),
         metadata: CheckpointMetadata {
             source: CheckpointSource::Update,
             step: 0,
             created_at: None,
+            parents: HashMap::new(),
         },
     };
     let id = saver.put(&config, &checkpoint).await.unwrap();

@@ -9,7 +9,7 @@
 pub fn log_node_start(node_id: &str) {
     #[cfg(feature = "tracing")]
     tracing::debug!(node_id = node_id, "Starting node execution");
-    
+
     #[cfg(not(feature = "tracing"))]
     eprintln!("[DEBUG] Starting node execution: {}", node_id);
 }
@@ -20,7 +20,7 @@ pub fn log_node_start(node_id: &str) {
 pub fn log_node_complete(node_id: &str, next: &crate::graph::Next) {
     #[cfg(feature = "tracing")]
     tracing::debug!(node_id = node_id, ?next, "Node execution complete");
-    
+
     #[cfg(not(feature = "tracing"))]
     eprintln!("[DEBUG] Node execution complete: {} -> {:?}", node_id, next);
 }
@@ -31,7 +31,7 @@ pub fn log_node_complete(node_id: &str, next: &crate::graph::Next) {
 pub fn log_state_update(node_id: &str) {
     #[cfg(feature = "tracing")]
     tracing::debug!(node_id = node_id, "State updated");
-    
+
     #[cfg(not(feature = "tracing"))]
     eprintln!("[DEBUG] State updated after node: {}", node_id);
 }
@@ -40,7 +40,7 @@ pub fn log_state_update(node_id: &str) {
 pub fn log_graph_start() {
     #[cfg(feature = "tracing")]
     tracing::info!("Starting graph execution");
-    
+
     #[cfg(not(feature = "tracing"))]
     eprintln!("[INFO] Starting graph execution");
 }
@@ -49,7 +49,7 @@ pub fn log_graph_start() {
 pub fn log_graph_complete() {
     #[cfg(feature = "tracing")]
     tracing::info!("Graph execution complete");
-    
+
     #[cfg(not(feature = "tracing"))]
     eprintln!("[INFO] Graph execution complete");
 }
@@ -58,7 +58,7 @@ pub fn log_graph_complete() {
 pub fn log_graph_error(error: &crate::error::AgentError) {
     #[cfg(feature = "tracing")]
     tracing::error!(?error, "Graph execution error");
-    
+
     #[cfg(not(feature = "tracing"))]
     eprintln!("[ERROR] Graph execution error: {:?}", error);
 }
@@ -75,6 +75,8 @@ mod tests {
         log_state_update("test_node");
         log_graph_start();
         log_graph_complete();
-        log_graph_error(&crate::error::AgentError::ExecutionFailed("test".to_string()));
+        log_graph_error(&crate::error::AgentError::ExecutionFailed(
+            "test".to_string(),
+        ));
     }
 }

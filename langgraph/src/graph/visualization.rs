@@ -20,9 +20,15 @@ where
     dot.push_str("  node [shape=box];\n\n");
 
     // Add START and END nodes
-    dot.push_str(&format!("  \"{}\" [label=\"START\", style=bold, fillcolor=lightgreen];\n", START));
-    dot.push_str(&format!("  \"{}\" [label=\"END\", style=bold, fillcolor=lightcoral];\n", END));
-    
+    dot.push_str(&format!(
+        "  \"{}\" [label=\"START\", style=bold, fillcolor=lightgreen];\n",
+        START
+    ));
+    dot.push_str(&format!(
+        "  \"{}\" [label=\"END\", style=bold, fillcolor=lightcoral];\n",
+        END
+    ));
+
     // Add regular nodes
     for (node_id, _) in &graph.nodes {
         dot.push_str(&format!("  \"{}\";\n", node_id));
@@ -33,13 +39,20 @@ where
     // Add edges based on edge_order
     if !graph.edge_order.is_empty() {
         // Edge from START to first node
-        dot.push_str(&format!("  \"{}\" -> \"{}\";\n", START, graph.edge_order[0]));
-        
+        dot.push_str(&format!(
+            "  \"{}\" -> \"{}\";\n",
+            START, graph.edge_order[0]
+        ));
+
         // Edges between nodes
         for i in 1..graph.edge_order.len() {
-            dot.push_str(&format!("  \"{}\" -> \"{}\";\n", graph.edge_order[i - 1], graph.edge_order[i]));
+            dot.push_str(&format!(
+                "  \"{}\" -> \"{}\";\n",
+                graph.edge_order[i - 1],
+                graph.edge_order[i]
+            ));
         }
-        
+
         // Edge from last node to END
         if let Some(last_node) = graph.edge_order.last() {
             dot.push_str(&format!("  \"{}\" -> \"{}\";\n", last_node, END));
@@ -58,7 +71,7 @@ where
     let mut text = String::new();
     writeln!(text, "Graph Structure:").unwrap();
     writeln!(text, "Nodes: {}", graph.nodes.len()).unwrap();
-    
+
     writeln!(text, "\nExecution Order:").unwrap();
     writeln!(text, "  {} ->", START).unwrap();
     for (i, node_id) in graph.edge_order.iter().enumerate() {
@@ -68,7 +81,7 @@ where
             writeln!(text, "  {} ->", node_id).unwrap();
         }
     }
-    
+
     text
 }
 
@@ -88,7 +101,7 @@ mod tests {
 
         let compiled = graph.compile().unwrap();
         let dot = generate_dot(&compiled);
-        
+
         assert!(dot.contains("digraph"));
         assert!(dot.contains("START"));
         assert!(dot.contains("END"));
@@ -105,7 +118,7 @@ mod tests {
 
         let compiled = graph.compile().unwrap();
         let text = generate_text(&compiled);
-        
+
         assert!(text.contains("Graph Structure"));
         assert!(text.contains(START)); // Use the constant directly
         assert!(text.contains(END)); // Use the constant directly

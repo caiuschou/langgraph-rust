@@ -106,9 +106,10 @@ impl Tool for SearchMemoriesTool {
             .and_then(|v| v.as_u64())
             .map(|n| n as usize);
 
+        // Use search_simple for backward compatibility
         let hits = self
             .store
-            .search(&self.namespace, query.as_deref(), limit)
+            .search_simple(&self.namespace, query.as_deref(), limit)
             .await
             .map_err(|e| match e {
                 crate::memory::StoreError::NotFound => {

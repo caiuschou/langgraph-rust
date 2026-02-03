@@ -48,7 +48,13 @@ mod tests {
     #[tokio::test]
     async fn test_cache_trait_object() {
         let cache: Box<dyn Cache<String, String>> = Box::new(InMemoryCache::new());
-        cache.set("key".to_string(), "value".to_string(), None).await.unwrap();
-        assert_eq!(cache.get(&"key".to_string()).await, Some("value".to_string()));
+        cache
+            .set("key".to_string(), "value".to_string(), None)
+            .await
+            .unwrap();
+        assert_eq!(
+            cache.get(&"key".to_string()).await,
+            Some("value".to_string())
+        );
     }
 }

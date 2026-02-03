@@ -57,10 +57,7 @@ pub trait InterruptHandler: Send + Sync {
     /// This method is called when an interrupt is raised. The handler can
     /// perform actions like prompting the user, logging, or modifying state,
     /// then return a value that will be used to continue execution.
-    fn handle_interrupt(
-        &self,
-        interrupt: &Interrupt,
-    ) -> Result<serde_json::Value, AgentError>;
+    fn handle_interrupt(&self, interrupt: &Interrupt) -> Result<serde_json::Value, AgentError>;
 }
 
 /// Default interrupt handler that returns the interrupt value as-is.
@@ -68,10 +65,7 @@ pub trait InterruptHandler: Send + Sync {
 pub struct DefaultInterruptHandler;
 
 impl InterruptHandler for DefaultInterruptHandler {
-    fn handle_interrupt(
-        &self,
-        interrupt: &Interrupt,
-    ) -> Result<serde_json::Value, AgentError> {
+    fn handle_interrupt(&self, interrupt: &Interrupt) -> Result<serde_json::Value, AgentError> {
         Ok(interrupt.value.clone())
     }
 }

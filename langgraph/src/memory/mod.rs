@@ -53,6 +53,7 @@ mod memory_saver;
 mod openai_embedder;
 mod serializer;
 mod store;
+mod uuid6;
 
 #[cfg(feature = "lance")]
 mod lance_store;
@@ -61,13 +62,23 @@ mod sqlite_saver;
 #[cfg(feature = "sqlite")]
 mod sqlite_store;
 
-pub use checkpoint::{Checkpoint, CheckpointListItem, CheckpointMetadata, CheckpointSource};
+pub use checkpoint::{
+    writes_idx_map, ChannelVersions, Checkpoint, CheckpointListItem, CheckpointMetadata,
+    CheckpointSource, CheckpointTuple, PendingWrite, CHECKPOINT_VERSION, ERROR, INTERRUPT, RESUME,
+    SCHEDULED,
+};
 pub use checkpointer::{CheckpointError, Checkpointer};
 pub use config::RunnableConfig;
 pub use in_memory_store::InMemoryStore;
 pub use memory_saver::MemorySaver;
-pub use serializer::{JsonSerializer, Serializer};
-pub use store::{Namespace, Store, StoreError, StoreSearchHit};
+pub use serializer::{
+    JsonSerializer, Serializer, TypedData, TypedSerializer, TYPE_BYTES, TYPE_JSON, TYPE_NULL,
+};
+pub use store::{
+    FilterOp, Item, ListNamespacesOptions, MatchCondition, Namespace, NamespaceMatchType,
+    SearchItem, SearchOptions, Store, StoreError, StoreOp, StoreOpResult, StoreSearchHit,
+};
+pub use uuid6::{uuid6, uuid6_with_params, Uuid6};
 
 #[cfg(any(feature = "lance", feature = "in-memory-vector"))]
 pub use embedder::Embedder;

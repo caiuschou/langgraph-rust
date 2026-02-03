@@ -183,8 +183,8 @@ where
     pub checkpoint_id: String,
     /// Timestamp when checkpoint was created.
     pub timestamp: String,
-    /// Step number in the graph execution.
-    pub step: u64,
+    /// Step number in the graph execution (-1 for input, 0+ for loop).
+    pub step: i64,
     /// The state snapshot at this checkpoint.
     pub state: S,
     /// Thread ID associated with this checkpoint.
@@ -351,7 +351,11 @@ where
     ///
     /// * `content` - The message chunk content
     /// * `node_id` - The node ID that produced this message
-    pub async fn emit_message(&self, content: impl Into<String>, node_id: impl Into<String>) -> bool {
+    pub async fn emit_message(
+        &self,
+        content: impl Into<String>,
+        node_id: impl Into<String>,
+    ) -> bool {
         if !self.modes.contains(&StreamMode::Messages) {
             return false;
         }
@@ -441,7 +445,7 @@ where
     ///
     /// * `checkpoint_id` - Unique identifier for this checkpoint
     /// * `timestamp` - Timestamp when checkpoint was created
-    /// * `step` - Step number in the graph execution
+    /// * `step` - Step number in the graph execution (-1 for input, 0+ for loop)
     /// * `state` - The state snapshot at this checkpoint
     /// * `thread_id` - Optional thread ID
     /// * `checkpoint_ns` - Optional checkpoint namespace (for subgraphs)
@@ -449,12 +453,14 @@ where
         &self,
         checkpoint_id: impl Into<String>,
         timestamp: impl Into<String>,
-        step: u64,
+        step: i64,
         state: S,
         thread_id: Option<String>,
         checkpoint_ns: Option<String>,
     ) -> bool {
-        if !self.modes.contains(&StreamMode::Checkpoints) && !self.modes.contains(&StreamMode::Debug) {
+        if !self.modes.contains(&StreamMode::Checkpoints)
+            && !self.modes.contains(&StreamMode::Debug)
+        {
             return false;
         }
         if let Some(tx) = &self.tx {
@@ -507,7 +513,11 @@ where
     ///
     /// * `node_id` - The ID of the node that finished execution
     /// * `result` - Ok(()) for success, Err(message) for failure
-    pub async fn emit_task_end(&self, node_id: impl Into<String>, result: Result<(), String>) -> bool {
+    pub async fn emit_task_end(
+        &self,
+        node_id: impl Into<String>,
+        result: Result<(), String>,
+    ) -> bool {
         if !self.modes.contains(&StreamMode::Tasks) && !self.modes.contains(&StreamMode::Debug) {
             return false;
         }
@@ -699,19 +709,19 @@ mod tests {
     #[tokio::test]
     async fn stream_writer_emit_custom_respects_mode() {
         let (tx, mut rx) = mpsc::channel::<StreamEvent<DummyState>>(8);
-        
+
         // Without Custom mode - should not send
         let modes_without_custom = HashSet::from_iter([StreamMode::Values]);
         let writer = StreamWriter::new(Some(tx.clone()), modes_without_custom);
         let sent = writer.emit_custom(serde_json::json!({"test": 1})).await;
         assert!(!sent, "should not send when Custom mode is disabled");
-        
+
         // With Custom mode - should send
         let modes_with_custom = HashSet::from_iter([StreamMode::Custom]);
         let writer = StreamWriter::new(Some(tx), modes_with_custom);
         let sent = writer.emit_custom(serde_json::json!({"test": 2})).await;
         assert!(sent, "should send when Custom mode is enabled");
-        
+
         // Verify the event
         let event = rx.recv().await.expect("should receive event");
         match event {
@@ -724,19 +734,19 @@ mod tests {
     #[tokio::test]
     async fn stream_writer_emit_message_respects_mode() {
         let (tx, mut rx) = mpsc::channel::<StreamEvent<DummyState>>(8);
-        
+
         // Without Messages mode - should not send
         let modes_without_messages = HashSet::from_iter([StreamMode::Values]);
         let writer = StreamWriter::new(Some(tx.clone()), modes_without_messages);
         let sent = writer.emit_message("content", "node1").await;
         assert!(!sent, "should not send when Messages mode is disabled");
-        
+
         // With Messages mode - should send
         let modes_with_messages = HashSet::from_iter([StreamMode::Messages]);
         let writer = StreamWriter::new(Some(tx), modes_with_messages);
         let sent = writer.emit_message("hello", "think").await;
         assert!(sent, "should send when Messages mode is enabled");
-        
+
         // Verify the event
         let event = rx.recv().await.expect("should receive event");
         match event {
@@ -752,13 +762,13 @@ mod tests {
     #[tokio::test]
     async fn stream_writer_emit_values_respects_mode() {
         let (tx, mut rx) = mpsc::channel::<StreamEvent<DummyState>>(8);
-        
+
         // With Values mode - should send
         let modes = HashSet::from_iter([StreamMode::Values]);
         let writer = StreamWriter::new(Some(tx), modes);
         let sent = writer.emit_values(DummyState(42)).await;
         assert!(sent, "should send when Values mode is enabled");
-        
+
         // Verify the event
         let event = rx.recv().await.expect("should receive event");
         match event {
@@ -771,13 +781,13 @@ mod tests {
     #[tokio::test]
     async fn stream_writer_emit_updates_respects_mode() {
         let (tx, mut rx) = mpsc::channel::<StreamEvent<DummyState>>(8);
-        
+
         // With Updates mode - should send
         let modes = HashSet::from_iter([StreamMode::Updates]);
         let writer = StreamWriter::new(Some(tx), modes);
         let sent = writer.emit_updates("node1", DummyState(100)).await;
         assert!(sent, "should send when Updates mode is enabled");
-        
+
         // Verify the event
         let event = rx.recv().await.expect("should receive event");
         match event {
@@ -793,13 +803,13 @@ mod tests {
     #[test]
     fn stream_writer_try_emit_non_blocking() {
         let (tx, _rx) = mpsc::channel::<StreamEvent<DummyState>>(8);
-        
+
         let modes = HashSet::from_iter([StreamMode::Custom, StreamMode::Messages]);
         let writer = StreamWriter::new(Some(tx), modes);
-        
+
         let sent = writer.try_emit_custom(serde_json::json!({"sync": true}));
         assert!(sent, "try_emit_custom should work");
-        
+
         let sent = writer.try_emit_message("sync content", "sync_node");
         assert!(sent, "try_emit_message should work");
     }
@@ -807,14 +817,26 @@ mod tests {
     /// **Scenario**: StreamWriter without sender returns false for all emit methods.
     #[tokio::test]
     async fn stream_writer_no_sender_returns_false() {
-        let modes = HashSet::from_iter([StreamMode::Custom, StreamMode::Messages, StreamMode::Values, StreamMode::Updates, StreamMode::Checkpoints, StreamMode::Tasks, StreamMode::Debug]);
+        let modes = HashSet::from_iter([
+            StreamMode::Custom,
+            StreamMode::Messages,
+            StreamMode::Values,
+            StreamMode::Updates,
+            StreamMode::Checkpoints,
+            StreamMode::Tasks,
+            StreamMode::Debug,
+        ]);
         let writer: StreamWriter<DummyState> = StreamWriter::new(None, modes);
-        
+
         assert!(!writer.emit_custom(serde_json::json!({})).await);
         assert!(!writer.emit_message("", "").await);
         assert!(!writer.emit_values(DummyState(0)).await);
         assert!(!writer.emit_updates("", DummyState(0)).await);
-        assert!(!writer.emit_checkpoint("", "", 0, DummyState(0), None, None).await);
+        assert!(
+            !writer
+                .emit_checkpoint("", "", 0, DummyState(0), None, None)
+                .await
+        );
         assert!(!writer.emit_task_start("").await);
         assert!(!writer.emit_task_end("", Ok(())).await);
     }
@@ -823,26 +845,30 @@ mod tests {
     #[tokio::test]
     async fn stream_writer_emit_checkpoint_respects_mode() {
         let (tx, mut rx) = mpsc::channel::<StreamEvent<DummyState>>(8);
-        
+
         // Without Checkpoints mode - should not send
         let modes_without_checkpoints = HashSet::from_iter([StreamMode::Values]);
         let writer = StreamWriter::new(Some(tx.clone()), modes_without_checkpoints);
-        let sent = writer.emit_checkpoint("cp-1", "123", 1, DummyState(10), None, None).await;
+        let sent = writer
+            .emit_checkpoint("cp-1", "123", 1, DummyState(10), None, None)
+            .await;
         assert!(!sent, "should not send when Checkpoints mode is disabled");
-        
+
         // With Checkpoints mode - should send
         let modes_with_checkpoints = HashSet::from_iter([StreamMode::Checkpoints]);
         let writer = StreamWriter::new(Some(tx), modes_with_checkpoints);
-        let sent = writer.emit_checkpoint(
-            "cp-2",
-            "456",
-            2,
-            DummyState(20),
-            Some("thread-1".into()),
-            Some("ns-1".into()),
-        ).await;
+        let sent = writer
+            .emit_checkpoint(
+                "cp-2",
+                "456",
+                2,
+                DummyState(20),
+                Some("thread-1".into()),
+                Some("ns-1".into()),
+            )
+            .await;
         assert!(sent, "should send when Checkpoints mode is enabled");
-        
+
         // Verify the event
         let event = rx.recv().await.expect("should receive event");
         match event {
@@ -862,19 +888,19 @@ mod tests {
     #[tokio::test]
     async fn stream_writer_emit_task_start_respects_mode() {
         let (tx, mut rx) = mpsc::channel::<StreamEvent<DummyState>>(8);
-        
+
         // Without Tasks mode - should not send
         let modes_without_tasks = HashSet::from_iter([StreamMode::Values]);
         let writer = StreamWriter::new(Some(tx.clone()), modes_without_tasks);
         let sent = writer.emit_task_start("node1").await;
         assert!(!sent, "should not send when Tasks mode is disabled");
-        
+
         // With Tasks mode - should send
         let modes_with_tasks = HashSet::from_iter([StreamMode::Tasks]);
         let writer = StreamWriter::new(Some(tx.clone()), modes_with_tasks);
         let sent = writer.emit_task_start("think").await;
         assert!(sent, "should send when Tasks mode is enabled");
-        
+
         // Verify the event
         let event = rx.recv().await.expect("should receive event");
         match event {
@@ -889,7 +915,7 @@ mod tests {
         let writer = StreamWriter::new(Some(tx), modes_with_debug);
         let sent = writer.emit_task_start("act").await;
         assert!(sent, "should send when Debug mode is enabled");
-        
+
         let event = rx.recv().await.expect("should receive event");
         match event {
             StreamEvent::TaskStart { node_id } => {
@@ -903,19 +929,19 @@ mod tests {
     #[tokio::test]
     async fn stream_writer_emit_task_end_respects_mode() {
         let (tx, mut rx) = mpsc::channel::<StreamEvent<DummyState>>(8);
-        
+
         // Without Tasks mode - should not send
         let modes_without_tasks = HashSet::from_iter([StreamMode::Values]);
         let writer = StreamWriter::new(Some(tx.clone()), modes_without_tasks);
         let sent = writer.emit_task_end("node1", Ok(())).await;
         assert!(!sent, "should not send when Tasks mode is disabled");
-        
+
         // With Tasks mode - should send success
         let modes_with_tasks = HashSet::from_iter([StreamMode::Tasks]);
         let writer = StreamWriter::new(Some(tx.clone()), modes_with_tasks);
         let sent = writer.emit_task_end("think", Ok(())).await;
         assert!(sent, "should send when Tasks mode is enabled");
-        
+
         // Verify the success event
         let event = rx.recv().await.expect("should receive event");
         match event {
@@ -927,9 +953,11 @@ mod tests {
         }
 
         // With Tasks mode - should send failure
-        let sent = writer.emit_task_end("act", Err("execution failed".into())).await;
+        let sent = writer
+            .emit_task_end("act", Err("execution failed".into()))
+            .await;
         assert!(sent, "should send failure when Tasks mode is enabled");
-        
+
         // Verify the failure event
         let event = rx.recv().await.expect("should receive event");
         match event {
@@ -948,28 +976,36 @@ mod tests {
         let (tx, mut rx) = mpsc::channel::<StreamEvent<DummyState>>(16);
         let modes = HashSet::from_iter([StreamMode::Custom]);
         let writer = StreamWriter::new(Some(tx), modes);
-        
+
         // Clone the writer
         let writer2 = writer.clone();
-        
+
         // Use both writers in parallel
         let t1 = tokio::spawn(async move {
-            writer.emit_custom(serde_json::json!({"from": "writer1"})).await
+            writer
+                .emit_custom(serde_json::json!({"from": "writer1"}))
+                .await
         });
         let t2 = tokio::spawn(async move {
-            writer2.emit_custom(serde_json::json!({"from": "writer2"})).await
+            writer2
+                .emit_custom(serde_json::json!({"from": "writer2"}))
+                .await
         });
-        
+
         let (r1, r2) = tokio::join!(t1, t2);
         assert!(r1.unwrap());
         assert!(r2.unwrap());
-        
+
         // Verify both events were received
         let mut events = vec![];
         while let Ok(event) = rx.try_recv() {
             events.push(event);
         }
-        assert_eq!(events.len(), 2, "should receive 2 events from cloned writers");
+        assert_eq!(
+            events.len(),
+            2,
+            "should receive 2 events from cloned writers"
+        );
     }
 
     /// **Scenario**: StreamWriter Debug implementation shows useful info.
@@ -997,40 +1033,44 @@ mod tests {
     #[test]
     fn tool_stream_writer_new_emits_via_function() {
         use std::sync::atomic::{AtomicUsize, Ordering};
-        
+
         let counter = Arc::new(AtomicUsize::new(0));
         let counter_clone = counter.clone();
-        
+
         let writer = ToolStreamWriter::new(move |_value| {
             counter_clone.fetch_add(1, Ordering::SeqCst);
             true
         });
-        
+
         assert!(writer.emit_custom(serde_json::json!({"a": 1})));
         assert!(writer.emit_custom(serde_json::json!({"b": 2})));
         assert!(writer.emit_custom(serde_json::json!({"c": 3})));
-        
-        assert_eq!(counter.load(Ordering::SeqCst), 3, "emit_fn should be called 3 times");
+
+        assert_eq!(
+            counter.load(Ordering::SeqCst),
+            3,
+            "emit_fn should be called 3 times"
+        );
     }
 
     /// **Scenario**: ToolStreamWriter is Clone and can be used in multiple places.
     #[test]
     fn tool_stream_writer_is_clone() {
         use std::sync::atomic::{AtomicUsize, Ordering};
-        
+
         let counter = Arc::new(AtomicUsize::new(0));
         let counter_clone = counter.clone();
-        
+
         let writer = ToolStreamWriter::new(move |_| {
             counter_clone.fetch_add(1, Ordering::SeqCst);
             true
         });
-        
+
         let writer2 = writer.clone();
-        
+
         writer.emit_custom(serde_json::json!(1));
         writer2.emit_custom(serde_json::json!(2));
-        
+
         assert_eq!(counter.load(Ordering::SeqCst), 2, "both clones should emit");
     }
 

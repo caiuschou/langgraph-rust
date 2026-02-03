@@ -79,7 +79,10 @@ impl ToolCallContext {
     }
 
     /// Creates a new ToolCallContext with messages and a stream writer.
-    pub fn with_stream_writer(recent_messages: Vec<Message>, stream_writer: ToolStreamWriter) -> Self {
+    pub fn with_stream_writer(
+        recent_messages: Vec<Message>,
+        stream_writer: ToolStreamWriter,
+    ) -> Self {
         Self {
             recent_messages,
             stream_writer: Some(stream_writer),

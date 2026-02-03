@@ -5,8 +5,10 @@
 
 use async_trait::async_trait;
 use langgraph::stream::{StreamEvent, ToolStreamWriter};
-use langgraph::tool_source::{ToolCallContent, ToolCallContext, ToolSource, ToolSourceError, ToolSpec};
-use langgraph::tools::{Tool, AggregateToolSource};
+use langgraph::tool_source::{
+    ToolCallContent, ToolCallContext, ToolSource, ToolSourceError, ToolSpec,
+};
+use langgraph::tools::{AggregateToolSource, Tool};
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -55,7 +57,7 @@ impl Tool for StreamingTool {
         if let Some(ctx) = ctx {
             // Emit start event
             ctx.emit_custom(json!({"phase": "start"}));
-            
+
             // Emit progress events
             for i in 1..=self.progress_count {
                 let progress = (i * 100) / self.progress_count;
@@ -65,7 +67,7 @@ impl Tool for StreamingTool {
                     "percent": progress
                 }));
             }
-            
+
             // Emit end event
             ctx.emit_custom(json!({"phase": "done"}));
         }
@@ -109,7 +111,7 @@ async fn tool_call_context_emit_custom_sends_events() {
 #[tokio::test]
 async fn tool_call_context_without_writer_returns_false() {
     let ctx = ToolCallContext::new(vec![]);
-    
+
     // emit_custom should return false when no writer is available
     assert!(!ctx.emit_custom(json!({"test": true})));
 }
@@ -136,19 +138,24 @@ async fn streaming_tool_emits_progress_events() {
 
     // Verify all events were captured
     let captured = events.lock().unwrap();
-    
+
     // Should have: 1 start + 5 progress + 1 done = 7 events
-    assert_eq!(captured.len(), 7, "Expected 7 events, got {}", captured.len());
-    
+    assert_eq!(
+        captured.len(),
+        7,
+        "Expected 7 events, got {}",
+        captured.len()
+    );
+
     // Verify start event
     assert_eq!(captured[0]["phase"], "start");
-    
+
     // Verify progress events
     for i in 0..5 {
         assert_eq!(captured[i + 1]["phase"], "progress");
         assert_eq!(captured[i + 1]["step"], i + 1);
     }
-    
+
     // Verify done event
     assert_eq!(captured[6]["phase"], "done");
 }
@@ -195,12 +202,18 @@ async fn aggregate_tool_source_passes_context_to_tools() {
     source.register_sync(Box::new(StreamingTool::new(2)));
 
     // Call through AggregateToolSource with context
-    let result = source.call_tool_with_context("streaming_tool", json!({}), Some(&ctx)).await;
+    let result = source
+        .call_tool_with_context("streaming_tool", json!({}), Some(&ctx))
+        .await;
     assert!(result.is_ok());
 
     // Verify events were captured
     let captured = events.lock().unwrap();
-    assert_eq!(captured.len(), 4, "Expected 4 events: start + 2 progress + done");
+    assert_eq!(
+        captured.len(),
+        4,
+        "Expected 4 events: start + 2 progress + done"
+    );
 }
 
 // ============================================================================
@@ -216,9 +229,8 @@ async fn tool_stream_writer_forwards_to_stream_event_channel() {
     let (tx, mut rx) = mpsc::channel::<StreamEvent<TestState>>(16);
 
     // Create a ToolStreamWriter that sends to the channel
-    let writer = ToolStreamWriter::new(move |value| {
-        tx.try_send(StreamEvent::Custom(value)).is_ok()
-    });
+    let writer =
+        ToolStreamWriter::new(move |value| tx.try_send(StreamEvent::Custom(value)).is_ok());
 
     let ctx = ToolCallContext::with_stream_writer(vec![], writer);
     let tool = StreamingTool::new(2);
@@ -235,11 +247,14 @@ async fn tool_stream_writer_forwards_to_stream_event_channel() {
 
     // Verify events
     assert_eq!(events.len(), 4, "Expected 4 StreamEvent::Custom events");
-    
+
     for event in &events {
         match event {
             StreamEvent::Custom(v) => {
-                assert!(v.get("phase").is_some(), "Each event should have 'phase' field");
+                assert!(
+                    v.get("phase").is_some(),
+                    "Each event should have 'phase' field"
+                );
             }
             _ => panic!("Expected StreamEvent::Custom"),
         }

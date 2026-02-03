@@ -87,7 +87,8 @@ pub mod traits;
 
 pub use cache::{Cache, CacheError, InMemoryCache};
 pub use channels::{
-    BinaryOperatorAggregate, Channel, ChannelError, EphemeralValue, LastValue,
+    BinaryOperatorAggregate, Channel, ChannelError, EphemeralValue, LastValue, NamedBarrierValue,
+    Topic,
 };
 pub use error::AgentError;
 pub use graph::{
@@ -96,10 +97,10 @@ pub use graph::{
     DefaultInterruptHandler, GraphInterrupt, Interrupt, InterruptHandler, NameNode, Next, Node,
     NodeMiddleware, RetryPolicy, RunContext, Runtime, StateGraph, END, START,
 };
-pub use managed::{IsLastStep, ManagedValue};
 #[cfg(feature = "openai")]
 pub use llm::ChatOpenAI;
 pub use llm::{LlmClient, LlmResponse, MockLlm, ToolChoiceMode};
+pub use managed::{IsLastStep, ManagedValue};
 #[cfg(all(feature = "lance", feature = "openai"))]
 pub use memory::OpenAIEmbedder;
 pub use memory::{
@@ -112,11 +113,18 @@ pub use memory::{Embedder, LanceStore};
 #[cfg(feature = "sqlite")]
 pub use memory::{SqliteSaver, SqliteStore};
 pub use message::Message;
-pub use react::{ActNode, ObserveNode, ThinkNode, REACT_SYSTEM_PROMPT};
+pub use react::{
+    tools_condition, ActNode, ErrorHandlerFn, HandleToolErrors, ObserveNode, ThinkNode,
+    ToolsConditionResult, DEFAULT_EXECUTION_ERROR_TEMPLATE, DEFAULT_TOOL_ERROR_TEMPLATE,
+    REACT_SYSTEM_PROMPT,
+};
 #[cfg(all(feature = "sqlite", feature = "mcp"))]
 pub use react_builder::{build_react_run_context, ReactBuildConfig, ReactRunContext};
 pub use state::{ReActState, ToolCall, ToolResult};
-pub use stream::{CheckpointEvent, MessageChunk, StreamEvent, StreamMetadata, StreamMode, StreamWriter, ToolStreamWriter};
+pub use stream::{
+    CheckpointEvent, MessageChunk, StreamEvent, StreamMetadata, StreamMode, StreamWriter,
+    ToolStreamWriter,
+};
 #[cfg(feature = "mcp")]
 pub use tool_source::McpToolSource;
 pub use tool_source::{

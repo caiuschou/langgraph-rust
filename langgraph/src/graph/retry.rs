@@ -133,12 +133,8 @@ mod tests {
 
     #[test]
     fn test_retry_policy_exponential() {
-        let policy = RetryPolicy::exponential(
-            3,
-            Duration::from_secs(1),
-            Duration::from_secs(10),
-            2.0,
-        );
+        let policy =
+            RetryPolicy::exponential(3, Duration::from_secs(1), Duration::from_secs(10), 2.0);
         assert!(policy.should_retry(0));
         assert!(policy.should_retry(1));
         assert!(policy.should_retry(2));
@@ -152,12 +148,8 @@ mod tests {
 
     #[test]
     fn test_retry_policy_exponential_max_cap() {
-        let policy = RetryPolicy::exponential(
-            5,
-            Duration::from_secs(1),
-            Duration::from_secs(5),
-            2.0,
-        );
+        let policy =
+            RetryPolicy::exponential(5, Duration::from_secs(1), Duration::from_secs(5), 2.0);
         // delay(3) = 1 * 2^3 = 8, but capped at 5
         assert_eq!(policy.delay(3), Duration::from_secs(5));
     }
