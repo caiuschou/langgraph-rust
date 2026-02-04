@@ -275,6 +275,54 @@ fn react_state_debug() {
     assert!(s.contains("tool_results"));
 }
 
+// --- ReActState::last_assistant_reply ---
+
+/// **Scenario**: No Assistant message yields None.
+#[test]
+fn last_assistant_reply_none_when_no_assistant() {
+    let state = ReActState {
+        messages: vec![Message::system("You are helpful."), Message::user("Hi")],
+        ..Default::default()
+    };
+    assert_eq!(state.last_assistant_reply(), None);
+}
+
+/// **Scenario**: Chronologically last Assistant message content is returned.
+#[test]
+fn last_assistant_reply_returns_last_assistant_content() {
+    let state = ReActState {
+        messages: vec![
+            Message::system("S"),
+            Message::user("U1"),
+            Message::assistant("A1"),
+            Message::user("U2"),
+            Message::assistant("Final reply."),
+        ],
+        ..Default::default()
+    };
+    assert_eq!(state.last_assistant_reply().as_deref(), Some("Final reply."));
+}
+
+/// **Scenario**: Empty Assistant content (e.g. tool_calls only) returns Some("").
+#[test]
+fn last_assistant_reply_empty_content_returns_some_empty() {
+    let state = ReActState {
+        messages: vec![
+            Message::user("Hi"),
+            Message::assistant(""), // e.g. turn with only tool_calls
+        ],
+        ..Default::default()
+    };
+    assert_eq!(state.last_assistant_reply().as_deref(), Some(""));
+}
+
+/// **Scenario**: Default state (no messages) returns None.
+#[test]
+fn last_assistant_reply_default_state_none() {
+    let state = ReActState::default();
+    assert_eq!(state.last_assistant_reply(), None);
+}
+
 #[test]
 fn react_state_send_sync_compile_time() {
     fn assert_send_sync<T: Send + Sync>() {}

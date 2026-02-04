@@ -64,5 +64,23 @@ pub struct ReActState {
     pub turn_count: u32,
 }
 
+impl ReActState {
+    /// Returns the content of the chronologically last Assistant message, if any.
+    ///
+    /// Used by callers (e.g. bot, CLI) to get the final reply without scanning `messages`.
+    /// Semantics: last message in `messages` that is `Message::Assistant(content)`; empty
+    /// content (e.g. assistant turn with only tool_calls) returns `Some("")`. Returns
+    /// `None` only when there is no Assistant message at all.
+    pub fn last_assistant_reply(&self) -> Option<String> {
+        self.messages
+            .iter()
+            .rev()
+            .find_map(|m| match m {
+                Message::Assistant(s) => Some(s.clone()),
+                _ => None,
+            })
+    }
+}
+
 // ReActState, ToolCall, ToolResult: fields are standard types (String, Vec<Message>, Option<String>, etc.),
 // so they satisfy Clone + Send + Sync + 'static required by Node<S> and StateGraph<S>.
