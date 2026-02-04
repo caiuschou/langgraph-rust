@@ -67,9 +67,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Ok(home) = std::env::var("HOME") {
             env.push(("HOME".to_string(), home));
         }
-        McpToolSource::new_with_env(cmd, args, env)?
+        McpToolSource::new_with_env(cmd, args, env, false)?
     } else {
-        McpToolSource::new(cmd, args)?
+        McpToolSource::new(cmd, args, false)?
     };
 
     let tools = tool_source.list_tools().await?;

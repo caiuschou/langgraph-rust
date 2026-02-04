@@ -66,7 +66,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|s| s.split_whitespace().map(String::from).collect())
         .unwrap_or_default();
 
-    let tool_source = McpToolSource::new_with_env(command, args, env)?;
+    let tool_source = McpToolSource::new_with_env(command, args, env, false)?;
 
     let mock_llm = MockLlm::new(
         "I'll list your GitLab projects.",

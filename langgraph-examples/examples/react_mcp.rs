@@ -61,7 +61,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "--quiet".into(),
                 ]
             });
-        McpToolSource::new(command, args)?
+        McpToolSource::new(command, args, false)?
     };
 
     let mock_llm = MockLlm::new(
