@@ -96,6 +96,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ],
         tool_calls: vec![],
         tool_results: vec![],
+        turn_count: 0,
     };
 
     println!("User: {}", user_input);

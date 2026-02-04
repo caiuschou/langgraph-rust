@@ -89,6 +89,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         messages: vec![Message::user(input)],
         tool_calls: vec![],
         tool_results: vec![],
+        turn_count: 0,
     };
 
     let result = compiled.invoke(state, None).await?;

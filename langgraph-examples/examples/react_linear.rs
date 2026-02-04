@@ -41,6 +41,7 @@ async fn main() {
         messages: vec![Message::system(REACT_SYSTEM_PROMPT), Message::user(input)],
         tool_calls: vec![],
         tool_results: vec![],
+        turn_count: 0,
     };
 
     match compiled.invoke(state, None).await {
