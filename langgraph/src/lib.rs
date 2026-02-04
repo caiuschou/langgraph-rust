@@ -67,6 +67,7 @@
 
 pub mod cache;
 pub mod channels;
+pub mod config;
 pub mod error;
 pub mod graph;
 pub mod llm;
@@ -82,6 +83,10 @@ pub mod tools;
 pub mod traits;
 
 pub use cache::{Cache, CacheError, InMemoryCache};
+pub use config::{
+    ConfigSection, EmbeddingConfigSummary, LlmConfigSummary, MemoryConfigSummary,
+    RunConfigSummary, ToolConfigSummary,
+};
 pub use channels::{
     BinaryOperatorAggregate, Channel, ChannelError, EphemeralValue, LastValue, NamedBarrierValue,
     Topic,
