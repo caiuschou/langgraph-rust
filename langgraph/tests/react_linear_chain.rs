@@ -34,6 +34,7 @@ async fn react_linear_chain_user_to_tool_result_in_messages() {
         messages: vec![Message::user("What time is it?")],
         tool_calls: vec![],
         tool_results: vec![],
+        turn_count: 0,
     };
 
     let out = compiled.invoke(state, None).await.unwrap();
@@ -77,6 +78,7 @@ async fn react_multi_round_loop_then_end() {
         messages: vec![Message::user("What time is it?")],
         tool_calls: vec![],
         tool_results: vec![],
+        turn_count: 0,
     };
 
     let out = compiled.invoke(state, None).await.unwrap();

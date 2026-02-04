@@ -234,6 +234,7 @@ impl Node<ReActState> for ActNode {
             messages: state.messages,
             tool_calls: state.tool_calls,
             tool_results,
+            turn_count: state.turn_count,
         };
         Ok((new_state, Next::Continue))
     }
@@ -334,6 +335,7 @@ impl Node<ReActState> for ActNode {
             messages: state.messages,
             tool_calls: state.tool_calls,
             tool_results,
+            turn_count: state.turn_count,
         };
         Ok((new_state, Next::Continue))
     }

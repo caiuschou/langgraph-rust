@@ -32,6 +32,7 @@ async fn think_node_appends_assistant_message_and_sets_tool_calls() {
         messages: vec![Message::user("What time is it?")],
         tool_calls: vec![],
         tool_results: vec![],
+        turn_count: 0,
     };
     let (out, _) = node.run(state).await.unwrap();
     assert_eq!(out.messages.len(), 2);
@@ -50,6 +51,7 @@ async fn think_node_with_no_tool_calls_sets_empty_tool_calls() {
         messages: vec![Message::user("Hi")],
         tool_calls: vec![],
         tool_results: vec![],
+        turn_count: 0,
     };
     let (out, _) = node.run(state).await.unwrap();
     assert_eq!(out.messages.len(), 2);
@@ -70,6 +72,7 @@ async fn think_node_preserves_tool_results_from_input_state() {
             name: Some("get_time".into()),
             content: "12:00".into(),
         }],
+        turn_count: 0,
     };
     let (out, _) = node.run(state).await.unwrap();
     assert_eq!(out.tool_results.len(), 1);
@@ -97,6 +100,7 @@ async fn act_node_executes_tool_calls_and_writes_tool_results() {
             id: Some("call-1".into()),
         }],
         tool_results: vec![],
+        turn_count: 0,
     };
     let (out, _) = node.run(state).await.unwrap();
     assert_eq!(out.messages.len(), 1);
@@ -115,6 +119,7 @@ async fn act_node_empty_tool_calls_leaves_tool_results_empty() {
         messages: vec![Message::user("Hi")],
         tool_calls: vec![],
         tool_results: vec![],
+        turn_count: 0,
     };
     let (out, _) = node.run(state).await.unwrap();
     assert!(out.tool_results.is_empty());
@@ -140,6 +145,7 @@ async fn act_node_multiple_tool_calls_produces_multiple_results() {
             },
         ],
         tool_results: vec![],
+        turn_count: 0,
     };
     let (out, _) = node.run(state).await.unwrap();
     assert_eq!(out.tool_results.len(), 2);
@@ -173,6 +179,7 @@ async fn observe_node_appends_tool_results_as_user_messages_and_clears_tool_fiel
             name: Some("get_time".into()),
             content: "2025-01-29 12:00:00".into(),
         }],
+        turn_count: 0,
     };
     let (out, _) = node.run(state).await.unwrap();
     assert_eq!(out.messages.len(), 3);
@@ -194,6 +201,7 @@ async fn observe_node_empty_tool_results_clears_tool_fields_only() {
             id: None,
         }],
         tool_results: vec![],
+        turn_count: 0,
     };
     let (out, _) = node.run(state).await.unwrap();
     assert_eq!(out.messages.len(), 2);
@@ -225,6 +233,7 @@ async fn observe_node_with_loop_returns_node_think_when_had_tool_calls() {
             name: Some("get_time".into()),
             content: "12:00".into(),
         }],
+        turn_count: 0,
     };
     let (out, next) = node.run(state).await.unwrap();
     assert_eq!(out.messages.len(), 3);
@@ -238,9 +247,39 @@ async fn observe_node_with_loop_returns_end_when_no_tool_calls() {
         messages: vec![Message::user("Hi"), Message::Assistant("Hello.".into())],
         tool_calls: vec![],
         tool_results: vec![],
+        turn_count: 0,
     };
     let (out, next) = node.run(state).await.unwrap();
     assert_eq!(out.messages.len(), 2);
+    assert!(matches!(next, Next::End));
+}
+
+/// **Scenario**: When enable_loop and turn_count reaches max (10), observe returns End even if there were tool_calls.
+#[tokio::test]
+async fn observe_node_with_loop_returns_end_when_max_turns_reached() {
+    const MAX_TURNS: u32 = 10;
+
+    let node = ObserveNode::with_loop();
+    let state = ReActState {
+        messages: vec![
+            Message::user("Hi"),
+            Message::Assistant("I'll check.".into()),
+        ],
+        tool_calls: vec![ToolCall {
+            name: "get_time".into(),
+            arguments: "{}".into(),
+            id: Some("c1".into()),
+        }],
+        tool_results: vec![ToolResult {
+            call_id: Some("c1".into()),
+            name: Some("get_time".into()),
+            content: "12:00".into(),
+        }],
+        turn_count: MAX_TURNS - 1,
+    };
+    let (out, next) = node.run(state).await.unwrap();
+    assert_eq!(out.messages.len(), 3);
+    assert_eq!(out.turn_count, MAX_TURNS);
     assert!(matches!(next, Next::End));
 }
 
@@ -256,6 +295,7 @@ async fn think_node_run_with_context_emits_messages_when_streaming() {
         messages: vec![Message::user("Hi")],
         tool_calls: vec![],
         tool_results: vec![],
+        turn_count: 0,
     };
 
     // Create stream channel
@@ -322,6 +362,7 @@ async fn think_node_run_with_context_no_messages_when_mode_empty() {
         messages: vec![Message::user("Hi")],
         tool_calls: vec![],
         tool_results: vec![],
+        turn_count: 0,
     };
 
     // Create stream channel
@@ -368,6 +409,7 @@ async fn think_node_run_with_context_no_panic_when_no_stream_tx() {
         messages: vec![Message::user("Hi")],
         tool_calls: vec![],
         tool_results: vec![],
+        turn_count: 0,
     };
 
     // Create RunContext without stream_tx
@@ -397,6 +439,7 @@ async fn think_node_stream_chunks_concatenate_to_full_content() {
         messages: vec![Message::user("Hi")],
         tool_calls: vec![],
         tool_results: vec![],
+        turn_count: 0,
     };
 
     let (tx, mut rx) = mpsc::channel::<StreamEvent<ReActState>>(128);

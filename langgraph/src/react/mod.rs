@@ -113,6 +113,7 @@ mod tests {
             messages: vec![Message::User("hello".into())],
             tool_calls: vec![],
             tool_results: vec![],
+            turn_count: 0,
         };
 
         let result = tools_condition(&state);
@@ -131,6 +132,7 @@ mod tests {
                 arguments: "{}".into(),
             }],
             tool_results: vec![],
+            turn_count: 0,
         };
 
         let result = tools_condition(&state);

@@ -22,6 +22,9 @@ use crate::Node;
 /// `enable_loop` is true, returns `Next::Node("think")` when this round had tool_calls
 /// (ReAct loop), else `Next::End`.
 ///
+/// Maximum number of ReAct loop rounds (observe passes) before forcing End.
+pub const MAX_REACT_TURNS: u32 = 10;
+
 /// **Interaction**: Implements `Node<ReActState>`; used by StateGraph. No external
 /// deps; reads ReActState.tool_results, writes ReActState.messages and clears
 /// tool_calls/tool_results.
@@ -70,12 +73,16 @@ impl Node<ReActState> for ObserveNode {
                 name, tr.content
             )));
         }
+        let next_turn = state.turn_count.saturating_add(1);
         let new_state = ReActState {
             messages,
             tool_calls: vec![],
             tool_results: vec![],
+            turn_count: next_turn,
         };
-        let next = if self.enable_loop && had_tool_calls {
+        let next = if self.enable_loop && next_turn >= MAX_REACT_TURNS {
+            Next::End
+        } else if self.enable_loop && had_tool_calls {
             Next::Node("think".to_string())
         } else if self.enable_loop && !had_tool_calls {
             Next::End

@@ -136,6 +136,7 @@ fn react_state_default() {
     assert!(s.messages.is_empty());
     assert!(s.tool_calls.is_empty());
     assert!(s.tool_results.is_empty());
+    assert_eq!(s.turn_count, 0);
 }
 
 #[test]
@@ -155,6 +156,7 @@ fn react_state_construction_and_clone() {
             name: Some("get_time".into()),
             content: "12:00".into(),
         }],
+        turn_count: 0,
     };
     assert_eq!(state.messages.len(), 2);
     assert_eq!(state.tool_calls.len(), 1);
@@ -199,6 +201,7 @@ fn react_state_clone_field_by_field() {
                 content: "[]".into(),
             },
         ],
+        turn_count: 0,
     };
     let cloned = state.clone();
     assert_eq!(cloned.messages.len(), 3);
@@ -220,6 +223,7 @@ fn react_state_with_all_message_variants() {
         ],
         tool_calls: vec![],
         tool_results: vec![],
+        turn_count: 0,
     };
     assert_eq!(state.messages.len(), 3);
     match &state.messages[0] {
@@ -246,6 +250,7 @@ fn react_state_empty_tool_calls_non_empty_results() {
             name: Some("get_time".into()),
             content: "12:00".into(),
         }],
+        turn_count: 0,
     };
     assert!(state.tool_calls.is_empty());
     assert_eq!(state.tool_results.len(), 1);
@@ -262,6 +267,7 @@ fn react_state_debug() {
             id: None,
         }],
         tool_results: vec![],
+        turn_count: 0,
     };
     let s = format!("{:?}", state);
     assert!(s.contains("messages"));

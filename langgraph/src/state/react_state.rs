@@ -59,6 +59,9 @@ pub struct ReActState {
     pub tool_calls: Vec<ToolCall>,
     /// Current round tool execution results (Act writes, Observe reads and merges).
     pub tool_results: Vec<ToolResult>,
+    /// Number of observe rounds completed; incremented in ObserveNode, used to enforce max turns.
+    #[serde(default)]
+    pub turn_count: u32,
 }
 
 // ReActState, ToolCall, ToolResult: fields are standard types (String, Vec<Message>, Option<String>, etc.),

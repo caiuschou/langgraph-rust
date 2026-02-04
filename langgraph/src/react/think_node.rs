@@ -59,6 +59,7 @@ impl Node<ReActState> for ThinkNode {
             messages,
             tool_calls: response.tool_calls,
             tool_results: state.tool_results,
+            turn_count: state.turn_count,
         };
         Ok((new_state, Next::Continue))
     }
@@ -119,6 +120,7 @@ impl Node<ReActState> for ThinkNode {
             messages,
             tool_calls: response.tool_calls,
             tool_results: state.tool_results,
+            turn_count: state.turn_count,
         };
         Ok((new_state, Next::Continue))
     }
