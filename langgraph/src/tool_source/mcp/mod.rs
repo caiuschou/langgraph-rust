@@ -207,7 +207,7 @@ impl ToolSource for McpToolSource {
     }
 }
 
-#[cfg(all(test, feature = "mcp"))]
+#[cfg(test)]
 mod tests {
     use super::*;
 

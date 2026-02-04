@@ -24,7 +24,7 @@
 //! | Type         | Persistence | Use case                    | Feature  |
 //! |--------------|-------------|-----------------------------|----------|
 //! | [`MemorySaver`]  | In-memory   | Dev, tests                  | —        |
-//! | [`SqliteSaver`]  | SQLite file | Single-node, production     | `sqlite` |
+//! | [`SqliteSaver`]  | SQLite file | Single-node, production     | — |
 //!
 //! Use with [`StateGraph::compile_with_checkpointer`](crate::graph::StateGraph::compile_with_checkpointer).
 //! [`JsonSerializer`] is required for `SqliteSaver` (state must be `Serialize + DeserializeOwned`).
@@ -34,22 +34,19 @@
 //! | Type             | Persistence | Search                      | Feature  |
 //! |------------------|-------------|-----------------------------|----------|
 //! | [`InMemoryStore`] | In-memory   | String filter (key/value)   | —        |
-//! | [`SqliteStore`]   | SQLite file | String filter               | `sqlite` |
+//! | [`SqliteStore`]   | SQLite file | String filter               | — |
 //! | [`LanceStore`]      | LanceDB     | Vector similarity (semantic)| `lance`  |
-//! | [`InMemoryVectorStore`] | In-memory | Vector similarity (semantic) | `in-memory-vector` |
+//! | [`InMemoryVectorStore`] | In-memory | Vector similarity (semantic) | — |
 //!
 //! `LanceStore` and `InMemoryVectorStore` require an `Embedder` for vector indexing; search with `query` uses semantic similarity.
 
 mod checkpoint;
 mod checkpointer;
 mod config;
-#[cfg(any(feature = "lance", feature = "in-memory-vector"))]
 mod embedder;
 mod in_memory_store;
-#[cfg(feature = "in-memory-vector")]
 mod in_memory_vector_store;
 mod memory_saver;
-#[cfg(feature = "openai")]
 mod openai_embedder;
 mod serializer;
 mod store;
@@ -57,9 +54,7 @@ mod uuid6;
 
 #[cfg(feature = "lance")]
 mod lance_store;
-#[cfg(feature = "sqlite")]
 mod sqlite_saver;
-#[cfg(feature = "sqlite")]
 mod sqlite_store;
 
 pub use checkpoint::{
@@ -80,15 +75,10 @@ pub use store::{
 };
 pub use uuid6::{uuid6, uuid6_with_params, Uuid6};
 
-#[cfg(any(feature = "lance", feature = "in-memory-vector"))]
 pub use embedder::Embedder;
-#[cfg(feature = "in-memory-vector")]
 pub use in_memory_vector_store::InMemoryVectorStore;
 #[cfg(feature = "lance")]
 pub use lance_store::LanceStore;
-#[cfg(feature = "openai")]
 pub use openai_embedder::OpenAIEmbedder;
-#[cfg(feature = "sqlite")]
 pub use sqlite_saver::SqliteSaver;
-#[cfg(feature = "sqlite")]
 pub use sqlite_store::SqliteStore;

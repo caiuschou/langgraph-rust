@@ -1,10 +1,8 @@
 //! McpSession integration test: spawn mcp-filesystem-server, list tools, call tool.
 //!
 //! Requires `mcp-filesystem-server` to be buildable. Run from workspace root:
-//! `cargo test -p langgraph --features mcp mcp_session -- --ignored` to run (ignored by default
+//! `cargo test -p langgraph mcp_session -- --ignored` to run (ignored by default
 //! as it spawns external process).
-
-#![cfg(feature = "mcp")]
 
 use langgraph::tool_source::McpSession;
 

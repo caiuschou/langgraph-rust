@@ -7,7 +7,6 @@
 //!
 //! Requires `OPENAI_API_KEY` environment variable (or custom config).
 
-#[cfg(feature = "openai")]
 use async_openai::{
     config::OpenAIConfig,
     types::embeddings::{CreateEmbeddingRequest, EmbeddingInput},
@@ -30,14 +29,12 @@ use crate::memory::store::StoreError;
 /// let embedder = OpenAIEmbedder::new("text-embedding-3-small");
 /// let vectors = embedder.embed(&["Hello, world!"])?;
 /// ```
-#[cfg(feature = "openai")]
 pub struct OpenAIEmbedder {
     client: Client<OpenAIConfig>,
     model: String,
     dimensions: usize,
 }
 
-#[cfg(feature = "openai")]
 impl OpenAIEmbedder {
     /// Creates a new OpenAI embedder with the specified model.
     ///
@@ -154,7 +151,6 @@ impl OpenAIEmbedder {
     }
 }
 
-#[cfg(feature = "openai")]
 impl crate::memory::Embedder for OpenAIEmbedder {
     fn embed(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, StoreError> {
         let runtime = tokio::runtime::Runtime::new()
@@ -193,7 +189,7 @@ impl crate::memory::Embedder for OpenAIEmbedder {
     }
 }
 
-#[cfg(all(test, feature = "openai", feature = "lance"))]
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::memory::Embedder;

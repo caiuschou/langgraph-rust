@@ -45,12 +45,9 @@ impl std::str::FromStr for ToolChoiceMode {
     }
 }
 
-#[cfg(feature = "openai")]
 mod openai;
 
 pub use mock::MockLlm;
-
-#[cfg(feature = "openai")]
 pub use openai::ChatOpenAI;
 
 use async_trait::async_trait;

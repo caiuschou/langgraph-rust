@@ -8,8 +8,7 @@ mod build;
 mod config;
 
 pub use build::{
-    build_react_run_context, build_react_runner, BuildRunnerError, ReactRunContext,
+    build_react_run_context, build_react_runner, build_react_runner_with_openai, BuildRunnerError,
+    ReactRunContext,
 };
-#[cfg(feature = "openai")]
-pub use build::build_react_runner_with_openai;
 pub use config::ReactBuildConfig;

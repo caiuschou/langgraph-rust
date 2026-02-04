@@ -1,8 +1,6 @@
 //! McpToolSource integration test: connect to mcp-filesystem-server, list_tools, call_tool.
 //!
-//! Run with: `cargo test -p langgraph --features mcp mcp_tool_source -- --ignored`
-
-#![cfg(feature = "mcp")]
+//! Run with: `cargo test -p langgraph mcp_tool_source -- --ignored`
 
 use langgraph::tool_source::{McpToolSource, ToolSource};
 

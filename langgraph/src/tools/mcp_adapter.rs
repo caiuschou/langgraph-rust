@@ -9,7 +9,6 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-#[cfg(feature = "mcp")]
 use crate::tool_source::McpToolSource;
 use crate::tool_source::{ToolCallContent, ToolCallContext, ToolSource, ToolSourceError, ToolSpec};
 use crate::tools::Tool;
@@ -23,14 +22,12 @@ use crate::tools::Tool;
 /// **Interaction**: Created by `register_mcp_tools`; registered with
 /// `AggregateToolSource::register_sync`. Implements `Tool`; `call` ignores
 /// `ToolCallContext` and forwards to MCP.
-#[cfg(feature = "mcp")]
 pub struct McpToolAdapter {
     name: String,
     spec: ToolSpec,
     source: Arc<McpToolSource>,
 }
 
-#[cfg(feature = "mcp")]
 impl McpToolAdapter {
     /// Creates an adapter for one MCP tool.
     ///
@@ -40,7 +37,6 @@ impl McpToolAdapter {
     }
 }
 
-#[cfg(feature = "mcp")]
 #[async_trait]
 impl Tool for McpToolAdapter {
     fn name(&self) -> &str {
@@ -69,7 +65,6 @@ impl Tool for McpToolAdapter {
 /// **Interaction**: Call after registering local tools (if any). Requires
 /// `exa_api_key` (or equivalent) to have been used to create `mcp`; do not call
 /// when MCP is not configured. See `docs/rust-langgraph/tools-refactor/architecture/common-interface-mcp.md`.
-#[cfg(feature = "mcp")]
 pub async fn register_mcp_tools(
     aggregate: &super::AggregateToolSource,
     mcp: Arc<McpToolSource>,

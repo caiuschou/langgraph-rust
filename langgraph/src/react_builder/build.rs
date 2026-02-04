@@ -77,7 +77,6 @@ fn build_store(
     }
 }
 
-#[cfg(all(feature = "in-memory-vector", feature = "openai"))]
 fn build_vector_store(
     config: &ReactBuildConfig,
 ) -> Result<Arc<dyn crate::memory::Store>, AgentError> {
@@ -107,13 +106,6 @@ fn build_vector_store(
     let embedder = OpenAIEmbedder::with_config(openai_config, model);
     let store = InMemoryVectorStore::new(Arc::new(embedder));
     Ok(Arc::new(store) as Arc<dyn crate::memory::Store>)
-}
-
-#[cfg(not(all(feature = "in-memory-vector", feature = "openai")))]
-fn build_vector_store(_config: &ReactBuildConfig) -> Result<Arc<dyn crate::memory::Store>, AgentError> {
-    Err(AgentError::ExecutionFailed(
-        "long-term memory with embedding requires features in-memory-vector and openai".into(),
-    ))
 }
 
 /// Builds runnable_config when thread_id or user_id is set; otherwise returns None.
@@ -248,7 +240,6 @@ pub async fn build_react_runner(
 }
 
 /// Builds default OpenAI LLM from config when `openai_api_key` and `model` are set.
-#[cfg(feature = "openai")]
 fn build_default_llm(config: &ReactBuildConfig) -> Result<Box<dyn LlmClient>, BuildRunnerError> {
     use async_openai::config::OpenAIConfig;
     use crate::llm::ChatOpenAI;
@@ -273,16 +264,9 @@ fn build_default_llm(config: &ReactBuildConfig) -> Result<Box<dyn LlmClient>, Bu
     Ok(Box::new(client))
 }
 
-#[cfg(not(feature = "openai"))]
-fn build_default_llm(_config: &ReactBuildConfig) -> Result<Box<dyn LlmClient>, BuildRunnerError> {
-    Err(BuildRunnerError::NoLlm)
-}
-
 /// Builds a [`ReactRunner`](crate::react::ReactRunner) with an OpenAI client from explicit config and model.
 ///
 /// Convenience when you already have an [`OpenAIConfig`](async_openai::config::OpenAIConfig).
-/// Requires `openai` feature.
-#[cfg(feature = "openai")]
 pub async fn build_react_runner_with_openai(
     config: &ReactBuildConfig,
     openai_config: async_openai::config::OpenAIConfig,

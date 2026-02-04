@@ -1,6 +1,5 @@
 mod aggregate_source;
 mod conversation;
-#[cfg(feature = "mcp")]
 mod mcp_adapter;
 pub mod memory;
 mod registry;
@@ -15,5 +14,4 @@ pub use memory::{
 pub use r#trait::Tool;
 pub use registry::{ToolRegistry, ToolRegistryLocked};
 
-#[cfg(feature = "mcp")]
 pub use mcp_adapter::{register_mcp_tools, McpToolAdapter};

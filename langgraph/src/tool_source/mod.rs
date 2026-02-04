@@ -19,7 +19,6 @@ mod mock;
 mod short_term_memory_tool_source;
 mod store_tool_source;
 
-#[cfg(feature = "mcp")]
 mod mcp;
 
 pub use context::ToolCallContext;
@@ -30,7 +29,6 @@ pub use store_tool_source::{
     StoreToolSource, TOOL_LIST_MEMORIES, TOOL_RECALL, TOOL_REMEMBER, TOOL_SEARCH_MEMORIES,
 };
 
-#[cfg(feature = "mcp")]
 pub use mcp::{McpSession, McpSessionError, McpToolSource};
 
 use async_trait::async_trait;

@@ -24,10 +24,7 @@
 //!
 //! ## Features
 //!
-//! - `mcp` (default): MCP tool source for external tools.
-//! - `sqlite` (default): Persistent checkpointer and store.
-//! - `openai`: OpenAI-compatible chat (e.g., OpenAI) via `async-openai`.
-//! - `lance`: LanceDB vector store for long-term memory.
+//! - `lance`: LanceDB vector store for long-term memory (optional; heavy dependency).
 //!
 //! ## Quick Start
 //!
@@ -77,7 +74,6 @@ pub mod managed;
 pub mod memory;
 pub mod message;
 pub mod react;
-#[cfg(all(feature = "sqlite", feature = "mcp"))]
 pub mod react_builder;
 pub mod state;
 pub mod stream;
@@ -98,20 +94,18 @@ pub use graph::{
     NameNode, Next, Node, NodeMiddleware, RetryPolicy, RunContext, Runtime, StateGraph, END,
     START,
 };
-#[cfg(feature = "openai")]
 pub use llm::ChatOpenAI;
 pub use llm::{LlmClient, LlmResponse, MockLlm, ToolChoiceMode};
 pub use managed::{IsLastStep, ManagedValue};
-#[cfg(feature = "openai")]
 pub use memory::OpenAIEmbedder;
 pub use memory::{
     Checkpoint, CheckpointError, CheckpointListItem, CheckpointMetadata, CheckpointSource,
     Checkpointer, InMemoryStore, JsonSerializer, MemorySaver, Namespace, RunnableConfig, Store,
     StoreError, StoreSearchHit,
 };
+pub use memory::Embedder;
 #[cfg(feature = "lance")]
-pub use memory::{Embedder, LanceStore};
-#[cfg(feature = "sqlite")]
+pub use memory::LanceStore;
 pub use memory::{SqliteSaver, SqliteStore};
 pub use message::Message;
 pub use react::{
@@ -120,24 +114,20 @@ pub use react::{
     ToolsConditionResult, WithNodeLogging, DEFAULT_EXECUTION_ERROR_TEMPLATE,
     DEFAULT_TOOL_ERROR_TEMPLATE, REACT_SYSTEM_PROMPT,
 };
-#[cfg(all(feature = "sqlite", feature = "mcp"))]
 pub use react_builder::{
-    build_react_run_context, build_react_runner, BuildRunnerError, ReactBuildConfig, ReactRunContext,
+    build_react_run_context, build_react_runner, build_react_runner_with_openai, BuildRunnerError,
+    ReactBuildConfig, ReactRunContext,
 };
-#[cfg(all(feature = "sqlite", feature = "mcp", feature = "openai"))]
-pub use react_builder::build_react_runner_with_openai;
 pub use state::{ReActState, ToolCall, ToolResult};
 pub use stream::{
     CheckpointEvent, MessageChunk, StreamEvent, StreamMetadata, StreamMode, StreamWriter,
     ToolStreamWriter,
 };
-#[cfg(feature = "mcp")]
 pub use tool_source::McpToolSource;
 pub use tool_source::{
     MemoryToolsSource, MockToolSource, ShortTermMemoryToolSource, StoreToolSource, ToolCallContent,
     ToolCallContext, ToolSource, ToolSourceError, ToolSpec, TOOL_GET_RECENT_MESSAGES,
     TOOL_LIST_MEMORIES, TOOL_RECALL, TOOL_REMEMBER, TOOL_SEARCH_MEMORIES,
 };
-#[cfg(feature = "mcp")]
 pub use tools::{register_mcp_tools, McpToolAdapter};
 pub use traits::Agent;

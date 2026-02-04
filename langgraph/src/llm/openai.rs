@@ -349,7 +349,7 @@ impl LlmClient for ChatOpenAI {
     }
 }
 
-#[cfg(all(test, feature = "openai"))]
+#[cfg(test)]
 mod tests {
     use super::*;
 
