@@ -86,6 +86,53 @@ fn from_env_succeeds_with_defaults_when_api_key_is_set() {
     assert_eq!(config.api_key, "test-key-for-unit-test");
 }
 
+/// **Scenario**: When THREAD_ID and USER_ID are both unset, from_env uses default memory: Both with generated thread_id and user_id "1".
+///
+/// Given: OPENAI_API_KEY is set, THREAD_ID and USER_ID are unset  
+/// When: RunConfig::from_env() is called  
+/// Then: memory is Both, user_id() is Some("1"), thread_id() is Some(s) with s starting with "thread-"
+#[test]
+fn from_env_defaults_to_both_memory_when_thread_and_user_id_unset() {
+    let _guard = env_api_key_lock();
+    let saved_key = std::env::var("OPENAI_API_KEY").ok();
+    let saved_thread = std::env::var("THREAD_ID").ok();
+    let saved_user = std::env::var("USER_ID").ok();
+
+    std::env::set_var("OPENAI_API_KEY", "test-key");
+    std::env::remove_var("THREAD_ID");
+    std::env::remove_var("USER_ID");
+
+    let config = RunConfig::from_env().expect("from_env should succeed");
+
+    if let Some(ref k) = saved_key {
+        std::env::set_var("OPENAI_API_KEY", k);
+    } else {
+        std::env::remove_var("OPENAI_API_KEY");
+    }
+    if let Some(ref t) = saved_thread {
+        std::env::set_var("THREAD_ID", t);
+    } else {
+        std::env::remove_var("THREAD_ID");
+    }
+    if let Some(ref u) = saved_user {
+        std::env::set_var("USER_ID", u);
+    } else {
+        std::env::remove_var("USER_ID");
+    }
+
+    assert!(
+        matches!(config.memory, MemoryConfig::Both { .. }),
+        "memory should be Both when THREAD_ID and USER_ID are unset"
+    );
+    assert_eq!(config.user_id(), Some("1"));
+    let tid = config.thread_id().expect("thread_id should be set");
+    assert!(
+        tid.starts_with("thread-"),
+        "thread_id should start with 'thread-', got: {}",
+        tid
+    );
+}
+
 /// **Scenario**: with_short_term_memory sets memory to ShortTerm and thread_id() returns the id.
 ///
 /// Given: a config obtained from from_env  

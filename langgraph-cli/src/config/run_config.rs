@@ -9,6 +9,16 @@ use langgraph::ToolChoiceMode;
 /// Error type used for config loading.
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 
+/// Returns a default thread ID when none is set (unique per call, for CLI default memory).
+fn default_thread_id() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    format!("thread-{}", nanos)
+}
+
 /// Run config: API base, key, model, temperature, tool_choice. Can be filled from env / .env.
 #[derive(Clone, Debug)]
 pub struct RunConfig {
@@ -28,7 +38,7 @@ pub struct RunConfig {
     pub embedding_api_base: Option<String>,
     /// Embeddings model name, e.g. `text-embedding-3-small`.
     pub embedding_model: Option<String>,
-    /// Memory configuration for short-term and/or long-term memory. Defaults to NoMemory when THREAD_ID/USER_ID not set.
+    /// Memory configuration for short-term and/or long-term memory. When THREAD_ID/USER_ID are not set, defaults to Both with a generated thread_id and user_id "1".
     pub memory: MemoryConfig,
     /// SQLite database path for persistence. Defaults to "memory.db" when DB_PATH not set.
     pub db_path: Option<String>,
@@ -210,7 +220,7 @@ impl RunConfig {
     /// `OPENAI_API_KEY` required; `OPENAI_API_BASE`, `OPENAI_MODEL` have defaults.
     /// `OPENAI_TEMPERATURE`, `OPENAI_TOOL_CHOICE` (auto|none|required) optional.
     /// For embeddings: `EMBEDDING_API_KEY`, `EMBEDDING_API_BASE`, `EMBEDDING_MODEL` optional.
-    /// For memory: `THREAD_ID`, `USER_ID`, `DB_PATH` optional.
+    /// For memory: `THREAD_ID`, `USER_ID`, `DB_PATH` optional. When both `THREAD_ID` and `USER_ID` are unset, uses a generated thread_id and user_id "1" (memory mode both).
     /// For Exa MCP: `USE_EXA_MCP`, `EXA_API_KEY`, `MCP_EXA_URL`, `MCP_REMOTE_CMD`, `MCP_REMOTE_ARGS` optional.
     pub fn from_env() -> Result<Self, Error> {
         let api_key = std::env::var("OPENAI_API_KEY").map_err(|_| {
@@ -253,7 +263,10 @@ impl RunConfig {
             },
             (Some(tid), None) => MemoryConfig::ShortTerm { thread_id: tid },
             (None, Some(uid)) => MemoryConfig::LongTerm { user_id: uid },
-            (None, None) => MemoryConfig::NoMemory,
+            (None, None) => MemoryConfig::Both {
+                thread_id: default_thread_id(),
+                user_id: "1".to_string(),
+            },
         };
         Ok(Self {
             api_base,
