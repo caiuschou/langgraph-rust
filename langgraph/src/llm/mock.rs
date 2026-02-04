@@ -148,6 +148,7 @@ impl LlmClient for MockLlm {
         Ok(LlmResponse {
             content,
             tool_calls,
+            usage: None,
         })
     }
 

@@ -122,6 +122,18 @@ impl Node<ReActState> for ThinkNode {
             tool_results: state.tool_results,
             turn_count: state.turn_count,
         };
+
+        // Emit token usage when available so CLI can print when --verbose
+        if let (Some(ref tx), Some(ref u)) = (ctx.stream_tx.as_ref(), response.usage.as_ref()) {
+            let _ = tx
+                .send(StreamEvent::Usage {
+                    prompt_tokens: u.prompt_tokens,
+                    completion_tokens: u.completion_tokens,
+                    total_tokens: u.total_tokens,
+                })
+                .await;
+        }
+
         Ok((new_state, Next::Continue))
     }
 }

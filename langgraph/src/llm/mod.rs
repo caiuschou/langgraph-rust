@@ -57,6 +57,20 @@ use crate::message::Message;
 use crate::state::ToolCall;
 use crate::stream::MessageChunk;
 
+/// Token usage for one LLM call (prompt + completion).
+///
+/// **Interaction**: Optional part of `LlmResponse`; emitted as `StreamEvent::Usage`
+/// when streaming so CLI can print usage when `--verbose`.
+#[derive(Clone, Debug, Default)]
+pub struct LlmUsage {
+    /// Tokens in the prompt (input).
+    pub prompt_tokens: u32,
+    /// Tokens in the completion (output).
+    pub completion_tokens: u32,
+    /// Total tokens (prompt + completion).
+    pub total_tokens: u32,
+}
+
 /// Response from an LLM completion: assistant message text and optional tool calls.
 ///
 /// **Interaction**: Returned by `LlmClient::invoke()`; ThinkNode writes
@@ -66,6 +80,8 @@ pub struct LlmResponse {
     pub content: String,
     /// Tool calls from this turn; empty means no tools, observe → END.
     pub tool_calls: Vec<ToolCall>,
+    /// Token usage for this call, when available (e.g. OpenAI returns this).
+    pub usage: Option<LlmUsage>,
 }
 
 /// LLM client: given messages, returns assistant text and optional tool_calls.

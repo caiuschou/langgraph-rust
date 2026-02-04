@@ -95,7 +95,7 @@ pub use graph::{
     START,
 };
 pub use llm::ChatOpenAI;
-pub use llm::{LlmClient, LlmResponse, MockLlm, ToolChoiceMode};
+pub use llm::{LlmClient, LlmResponse, LlmUsage, MockLlm, ToolChoiceMode};
 pub use managed::{IsLastStep, ManagedValue};
 pub use memory::OpenAIEmbedder;
 pub use memory::{

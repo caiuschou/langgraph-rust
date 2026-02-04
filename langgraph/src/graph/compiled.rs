@@ -873,9 +873,10 @@ mod tests {
                 | StreamEvent::Custom(_)
                 | StreamEvent::Checkpoint(_)
                 | StreamEvent::TaskStart { .. }
-                | StreamEvent::TaskEnd { .. } => {
+                | StreamEvent::TaskEnd { .. }
+                | StreamEvent::Usage { .. } => {
                     panic!(
-                        "run_loop does not emit Messages/Custom/Checkpoint/Task events in this test, got {:?}",
+                        "run_loop does not emit Messages/Custom/Checkpoint/Task/Usage events in this test, got {:?}",
                         e
                     )
                 }

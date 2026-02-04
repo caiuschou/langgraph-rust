@@ -18,7 +18,7 @@ use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
 
 use crate::error::AgentError;
-use crate::llm::{LlmClient, LlmResponse};
+use crate::llm::{LlmClient, LlmResponse, LlmUsage};
 use crate::message::Message;
 use crate::state::ToolCall;
 use crate::stream::MessageChunk;
@@ -29,8 +29,8 @@ use async_openai::{
     types::chat::{
         ChatCompletionMessageToolCalls, ChatCompletionRequestMessage,
         ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage, ChatCompletionTool,
-        ChatCompletionToolChoiceOption, ChatCompletionTools, CreateChatCompletionRequestArgs,
-        FunctionObject, ToolChoiceOptions,
+        ChatCompletionToolChoiceOption, ChatCompletionTools, ChatCompletionStreamOptions,
+        CreateChatCompletionRequestArgs, FunctionObject, ToolChoiceOptions,
     },
     Client,
 };
@@ -202,9 +202,15 @@ impl LlmClient for ChatOpenAI {
             })
             .collect();
 
+        let usage = response.usage.map(|u| LlmUsage {
+            prompt_tokens: u.prompt_tokens,
+            completion_tokens: u.completion_tokens,
+            total_tokens: u.total_tokens,
+        });
         Ok(LlmResponse {
             content,
             tool_calls,
+            usage,
         })
     }
 
@@ -229,6 +235,10 @@ impl LlmClient for ChatOpenAI {
         args.model(self.model.clone());
         args.messages(openai_messages);
         args.stream(true);
+        args.stream_options(ChatCompletionStreamOptions {
+            include_usage: Some(true),
+            include_obfuscation: None,
+        });
 
         if let Some(ref tools) = self.tools {
             let chat_tools: Vec<ChatCompletionTools> = tools
@@ -271,15 +281,24 @@ impl LlmClient for ChatOpenAI {
             .await
             .map_err(|e| AgentError::ExecutionFailed(format!("OpenAI stream error: {}", e)))?;
 
-        // Accumulate content and tool calls from stream
+        // Accumulate content, tool calls, and usage from stream
         let mut full_content = String::new();
         // Tool calls accumulator: index -> (id, name, arguments)
         let mut tool_call_map: std::collections::HashMap<u32, (String, String, String)> =
             std::collections::HashMap::new();
+        let mut stream_usage: Option<LlmUsage> = None;
 
         while let Some(result) = stream.next().await {
             let response = result
                 .map_err(|e| AgentError::ExecutionFailed(format!("OpenAI stream error: {}", e)))?;
+
+            if let Some(ref u) = response.usage {
+                stream_usage = Some(LlmUsage {
+                    prompt_tokens: u.prompt_tokens,
+                    completion_tokens: u.completion_tokens,
+                    total_tokens: u.total_tokens,
+                });
+            }
 
             for choice in response.choices {
                 let delta = &choice.delta;
@@ -345,6 +364,7 @@ impl LlmClient for ChatOpenAI {
         Ok(LlmResponse {
             content: full_content,
             tool_calls,
+            usage: stream_usage,
         })
     }
 }

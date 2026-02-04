@@ -230,6 +230,16 @@ where
         /// Result of the task: Ok(()) for success, Err(message) for failure.
         result: Result<(), String>,
     },
+    /// LLM token usage for the last completion (e.g. after think node).
+    /// Emitted when the provider returns usage (e.g. OpenAI); consumers can print when verbose.
+    Usage {
+        /// Tokens in the prompt (input).
+        prompt_tokens: u32,
+        /// Tokens in the completion (output).
+        completion_tokens: u32,
+        /// Total tokens (prompt + completion).
+        total_tokens: u32,
+    },
 }
 
 /// A writer for emitting streaming events from nodes and tools.
