@@ -121,7 +121,11 @@ pub use react::{
     DEFAULT_TOOL_ERROR_TEMPLATE, REACT_SYSTEM_PROMPT,
 };
 #[cfg(all(feature = "sqlite", feature = "mcp"))]
-pub use react_builder::{build_react_run_context, ReactBuildConfig, ReactRunContext};
+pub use react_builder::{
+    build_react_run_context, build_react_runner, BuildRunnerError, ReactBuildConfig, ReactRunContext,
+};
+#[cfg(all(feature = "sqlite", feature = "mcp", feature = "openai"))]
+pub use react_builder::build_react_runner_with_openai;
 pub use state::{ReActState, ToolCall, ToolResult};
 pub use stream::{
     CheckpointEvent, MessageChunk, StreamEvent, StreamMetadata, StreamMode, StreamWriter,
