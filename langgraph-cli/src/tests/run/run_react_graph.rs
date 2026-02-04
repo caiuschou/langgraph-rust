@@ -30,7 +30,7 @@ async fn run_react_graph_without_checkpointer_or_store_returns_ok_and_state_has_
     let llm: Box<dyn langgraph::LlmClient> = Box::new(llm);
     let tool_source: Box<dyn ToolSource> = Box::new(tool_source);
 
-    let result = run_react_graph("hi", llm, tool_source, None, None, None).await;
+    let result = run_react_graph("hi", llm, tool_source, None, None, None, false).await;
 
     let state = result.expect("run_react_graph with mock should succeed");
     assert!(
@@ -66,7 +66,7 @@ async fn run_react_graph_with_empty_user_message_returns_ok_and_state_has_empty_
     let llm: Box<dyn langgraph::LlmClient> = Box::new(llm);
     let tool_source: Box<dyn ToolSource> = Box::new(tool_source);
 
-    let result = run_react_graph("", llm, tool_source, None, None, None).await;
+    let result = run_react_graph("", llm, tool_source, None, None, None, false).await;
 
     let state = result.expect("run_react_graph should succeed");
     let has_empty_user = state
@@ -97,6 +97,7 @@ async fn run_react_graph_with_store_and_no_checkpointer_returns_ok() {
         None,
         Some(store as Arc<dyn langgraph::Store>),
         None,
+        false,
     )
     .await;
 
@@ -123,7 +124,7 @@ async fn run_react_graph_one_round_with_tool_call_returns_ok_and_tool_result_in_
     let llm: Box<dyn langgraph::LlmClient> = Box::new(llm);
     let tool_source: Box<dyn ToolSource> = Box::new(tool_source);
 
-    let result = run_react_graph("What time is it?", llm, tool_source, None, None, None).await;
+    let result = run_react_graph("What time is it?", llm, tool_source, None, None, None, false).await;
 
     let state = result.expect("run_react_graph with tool call should succeed");
     assert!(
@@ -159,7 +160,7 @@ async fn run_react_graph_state_starts_with_system_prompt() {
     let llm: Box<dyn langgraph::LlmClient> = Box::new(llm);
     let tool_source: Box<dyn ToolSource> = Box::new(tool_source);
 
-    let result = run_react_graph("hi", llm, tool_source, None, None, None).await;
+    let result = run_react_graph("hi", llm, tool_source, None, None, None, false).await;
 
     let state = result.expect("run_react_graph should succeed");
     let first = state
@@ -216,6 +217,7 @@ async fn run_react_graph_with_checkpoint_loads_history_and_appends_new_turn() {
         Some(cp),
         None,
         Some(config),
+        false,
     )
     .await;
 

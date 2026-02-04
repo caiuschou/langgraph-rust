@@ -23,7 +23,8 @@ embedding = ["langgraph/lance", "langgraph/openai"]
 
 [dependencies]
 async-trait = { workspace = true }
-langgraph = { path = "../langgraph", features = ["openai", "sqlite", "mcp"] }
+langgraph = { path = "../langgraph", features = ["openai", "sqlite", "mcp", "tracing"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tokio = { workspace = true }
 tokio-stream = { workspace = true }
 clap = { workspace = true }

@@ -28,7 +28,8 @@ use super::Error;
 /// checkpointer and invokes with config; otherwise compiles without and invokes with `None`.
 /// If `runnable_config.thread_id` is present and checkpointer is set, loads the latest checkpoint
 /// and appends the new user message so that multi-turn conversation continues across runs.
-/// Used by run_with_config (both sqlite and no_sqlite) and by tests.
+/// When `verbose` is true, attaches node logging middleware (enter/exit). Used by run_with_config
+/// (both sqlite and no_sqlite) and by tests.
 pub(crate) async fn run_react_graph(
     user_message: &str,
     llm: Box<dyn LlmClient>,
@@ -36,6 +37,7 @@ pub(crate) async fn run_react_graph(
     checkpointer: Option<Arc<dyn langgraph::Checkpointer<ReActState>>>,
     store: Option<Arc<dyn langgraph::Store>>,
     runnable_config: Option<langgraph::RunnableConfig>,
+    verbose: bool,
 ) -> Result<ReActState, Error> {
     let think = ThinkNode::new(llm);
     let act = ActNode::new(tool_source);
@@ -54,10 +56,15 @@ pub(crate) async fn run_react_graph(
         .add_edge("act", "observe")
         .add_edge("observe", END);
 
-    let compiled: CompiledStateGraph<ReActState> = if let Some(cp) = &checkpointer {
-        graph.with_node_logging().compile_with_checkpointer(Arc::clone(cp))?
+    let graph_maybe_logging = if verbose {
+        graph.with_node_logging()
     } else {
-        graph.with_node_logging().compile()?
+        graph
+    };
+    let compiled: CompiledStateGraph<ReActState> = if let Some(cp) = &checkpointer {
+        graph_maybe_logging.compile_with_checkpointer(Arc::clone(cp))?
+    } else {
+        graph_maybe_logging.compile()?
     };
 
     let state = build_initial_state(
@@ -74,8 +81,8 @@ pub(crate) async fn run_react_graph(
 /// Runs the ReAct graph in streaming mode: emits Thinking... / Calling tool / LLM tokens to stdout.
 ///
 /// Same graph build as [`run_react_graph`]; uses [`CompiledStateGraph::stream`] and consumes
-/// `StreamEvent` to print human-readable progress. Returns the final state from the last
-/// `StreamEvent::Values` in the stream.
+/// `StreamEvent` to print human-readable progress. When `verbose` is true, attaches node logging.
+/// Returns the final state from the last `StreamEvent::Values` in the stream.
 pub(crate) async fn run_react_graph_stream(
     user_message: &str,
     llm: Box<dyn LlmClient>,
@@ -83,6 +90,7 @@ pub(crate) async fn run_react_graph_stream(
     checkpointer: Option<Arc<dyn langgraph::Checkpointer<ReActState>>>,
     store: Option<Arc<dyn langgraph::Store>>,
     runnable_config: Option<langgraph::RunnableConfig>,
+    verbose: bool,
 ) -> Result<ReActState, Error> {
     let think = ThinkNode::new(llm);
     let act = ActNode::new(tool_source);
@@ -101,10 +109,15 @@ pub(crate) async fn run_react_graph_stream(
         .add_edge("act", "observe")
         .add_edge("observe", END);
 
-    let compiled: CompiledStateGraph<ReActState> = if let Some(cp) = &checkpointer {
-        graph.with_node_logging().compile_with_checkpointer(Arc::clone(cp))?
+    let graph_maybe_logging = if verbose {
+        graph.with_node_logging()
     } else {
-        graph.with_node_logging().compile()?
+        graph
+    };
+    let compiled: CompiledStateGraph<ReActState> = if let Some(cp) = &checkpointer {
+        graph_maybe_logging.compile_with_checkpointer(Arc::clone(cp))?
+    } else {
+        graph_maybe_logging.compile()?
     };
 
     let state = build_initial_state(
@@ -118,6 +131,7 @@ pub(crate) async fn run_react_graph_stream(
         StreamMode::Messages,
         StreamMode::Tasks,
         StreamMode::Updates,
+        StreamMode::Values,
     ]);
     let mut stream = compiled.stream(state, runnable_config, modes);
 

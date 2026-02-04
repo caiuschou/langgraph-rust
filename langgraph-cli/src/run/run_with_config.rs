@@ -50,6 +50,7 @@ pub async fn run_with_config(
             ctx.checkpointer,
             ctx.store,
             ctx.runnable_config,
+            config.verbose,
         )
         .await
     } else {
@@ -60,6 +61,7 @@ pub async fn run_with_config(
             ctx.checkpointer,
             ctx.store,
             ctx.runnable_config,
+            config.verbose,
         )
         .await
     }

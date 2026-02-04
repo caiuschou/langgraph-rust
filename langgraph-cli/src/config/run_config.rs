@@ -42,6 +42,8 @@ pub struct RunConfig {
     pub mcp_remote_args: String,
     /// When true, run with streaming: show Thinking... / Calling tool / LLM tokens on stdout.
     pub stream: bool,
+    /// When true, show debug logs (node enter/exit, graph execution). Requires --verbose.
+    pub verbose: bool,
 }
 
 impl RunConfig {
@@ -89,6 +91,7 @@ impl RunConfig {
         if options.stream {
             self.stream = true;
         }
+        self.verbose = options.verbose;
     }
 
     /// Enable short-term memory (checkpointer) for conversation history.
@@ -169,6 +172,7 @@ impl RunConfig {
             mcp_exa_url: self.mcp_exa_url.clone(),
             mcp_remote_cmd: self.mcp_remote_cmd.clone(),
             mcp_remote_args: self.mcp_remote_args.clone(),
+            mcp_verbose: self.verbose,
         }
     }
 
@@ -260,6 +264,7 @@ impl RunConfig {
             mcp_remote_cmd,
             mcp_remote_args,
             stream: true,
+            verbose: false,
         })
     }
 }

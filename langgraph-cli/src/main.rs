@@ -2,6 +2,7 @@
 
 use clap::Parser;
 use langgraph_cli::{run_with_options, Message, RunOptions};
+use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]
 #[command(name = "langgraph")]
@@ -54,6 +55,10 @@ struct Args {
     /// Disable streaming (use when piping or scripting)
     #[arg(long = "no-stream", action = clap::ArgAction::SetTrue)]
     no_stream: bool,
+
+    /// Show debug logs (node enter/exit, graph execution)
+    #[arg(short, long)]
+    verbose: bool,
 }
 
 fn get_message(args: &Args) -> String {
@@ -81,14 +86,25 @@ fn args_to_run_options(args: &Args) -> Result<RunOptions, String> {
         exa_api_key: args.exa_api_key.clone(),
         mcp_exa_url: args.mcp_exa_url.clone(),
         stream: args.stream && !args.no_stream,
+        verbose: args.verbose,
         ..Default::default()
     })
+}
+
+/// Initializes tracing so that langgraph's debug/info/error logs are shown only when verbose.
+fn init_tracing(verbose: bool) {
+    let level = if verbose { "debug" } else { "off" };
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::new(level))
+        .with_writer(std::io::stderr)
+        .try_init();
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv::dotenv().ok();
     let args = Args::parse();
+    init_tracing(args.verbose);
     let input = get_message(&args);
 
     let options = match args_to_run_options(&args) {

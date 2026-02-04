@@ -31,6 +31,8 @@ pub struct RunOptions {
     pub mcp_exa_url: Option<String>,
     /// Enable streaming: show Thinking... / Calling tool / LLM tokens as they arrive (stdout). Default: true.
     pub stream: bool,
+    /// When true, show debug logs (node enter/exit, graph execution). Default: false.
+    pub verbose: bool,
 }
 
 impl Default for RunOptions {
@@ -45,6 +47,7 @@ impl Default for RunOptions {
             exa_api_key: None,
             mcp_exa_url: None,
             stream: true,
+            verbose: false,
         }
     }
 }
