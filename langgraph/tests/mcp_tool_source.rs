@@ -21,7 +21,8 @@ async fn mcp_tool_source_list_and_call() {
             ]
         });
 
-    let source = McpToolSource::new(command, args).expect("McpToolSource::new");
+    let source =
+        McpToolSource::new(command, args, true).expect("McpToolSource::new");
     let tools = source.list_tools().await.expect("list_tools");
     assert!(!tools.is_empty(), "expected at least one tool");
 

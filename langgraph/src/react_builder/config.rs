@@ -23,4 +23,7 @@ pub struct ReactBuildConfig {
     pub mcp_remote_cmd: String,
     /// Args for mcp-remote, e.g. "-y mcp-remote".
     pub mcp_remote_args: String,
+    /// When true, MCP subprocess (e.g. mcp-remote) stderr is inherited so debug logs are visible.
+    /// When false, stderr is discarded for a quiet default UX. See docs/stream/verbose-ux-improvement-plan.md.
+    pub mcp_verbose: bool,
 }

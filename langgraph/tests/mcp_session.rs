@@ -24,7 +24,8 @@ async fn mcp_session_list_and_call_tool() {
         });
 
     let mut session =
-        McpSession::new(command, args, None::<Vec<(String, String)>>).expect("McpSession::new");
+        McpSession::new(command, args, None::<Vec<(String, String)>>, true)
+            .expect("McpSession::new");
 
     session
         .send_request("test-tools-list", "tools/list", serde_json::json!({}))

@@ -38,16 +38,25 @@ impl McpSession {
     /// `StdioClientTransport` from mcp_client; sends `initialize` then
     /// `notifications/initialized`. Optional `env` is passed to the child process
     /// (e.g. GITLAB_TOKEN for GitLab MCP server).
+    /// When `stderr_verbose` is false, child stderr is discarded for quiet default UX;
+    /// when true, child stderr is inherited so MCP proxy debug logs are visible. See
+    /// docs/stream/verbose-ux-improvement-plan.md.
     pub fn new(
         command: impl Into<String>,
         args: Vec<String>,
         env: Option<impl IntoIterator<Item = (impl Into<String>, impl Into<String>)>>,
+        stderr_verbose: bool,
     ) -> Result<Self, McpSessionError> {
         let (tx, rx) = mpsc::channel();
 
+        let stderr_stream = if stderr_verbose {
+            StdioStream::Inherit
+        } else {
+            StdioStream::Null
+        };
         let mut params = StdioServerParameters::new(command)
             .args(args)
-            .stderr(StdioStream::Inherit);
+            .stderr(stderr_stream);
         if let Some(env_iter) = env {
             params = params.env(env_iter);
         }

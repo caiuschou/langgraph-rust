@@ -96,8 +96,13 @@ async fn register_exa_mcp(
     if let Ok(home) = std::env::var("HOME") {
         env.push(("HOME".to_string(), home));
     }
-    let mcp = McpToolSource::new_with_env(config.mcp_remote_cmd.clone(), args, env)
-        .map_err(to_agent_error)?;
+    let mcp = McpToolSource::new_with_env(
+        config.mcp_remote_cmd.clone(),
+        args,
+        env,
+        config.mcp_verbose,
+    )
+    .map_err(to_agent_error)?;
     register_mcp_tools(aggregate, Arc::new(mcp))
         .await
         .map_err(to_agent_error)?;

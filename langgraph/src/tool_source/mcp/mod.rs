@@ -33,11 +33,16 @@ impl McpToolSource {
     /// Creates a new McpToolSource by spawning the MCP server and initializing.
     /// Returns `Err` if spawn or initialize fails. Child process inherits only
     /// default env (HOME, PATH, etc.); no extra vars.
+    /// When `stderr_verbose` is false, child stderr is discarded (quiet UX).
     ///
     /// **Interaction**: Caller provides `command` (e.g. `cargo`) and `args`
     /// (e.g. `["run", "-p", "mcp-filesystem-server", "--quiet"]`).
-    pub fn new(command: impl Into<String>, args: Vec<String>) -> Result<Self, McpSessionError> {
-        let session = McpSession::new(command, args, None::<Vec<(String, String)>>)?;
+    pub fn new(
+        command: impl Into<String>,
+        args: Vec<String>,
+        stderr_verbose: bool,
+    ) -> Result<Self, McpSessionError> {
+        let session = McpSession::new(command, args, None::<Vec<(String, String)>>, stderr_verbose)?;
         Ok(Self {
             session: Mutex::new(session),
         })
@@ -45,15 +50,17 @@ impl McpToolSource {
 
     /// Like `new`, but passes the given env vars to the MCP server process.
     /// Use for servers that need credentials (e.g. GITLAB_TOKEN for GitLab MCP).
+    /// When `stderr_verbose` is false, child stderr is discarded (quiet default UX).
     ///
-    /// **Interaction**: Caller provides `command`, `args`, and env key-value pairs
-    /// to be set in the child process environment.
+    /// **Interaction**: Caller provides `command`, `args`, env key-value pairs,
+    /// and `stderr_verbose` (e.g. from CLI `--verbose`).
     pub fn new_with_env(
         command: impl Into<String>,
         args: Vec<String>,
         env: impl IntoIterator<Item = (impl Into<String>, impl Into<String>)>,
+        stderr_verbose: bool,
     ) -> Result<Self, McpSessionError> {
-        let session = McpSession::new(command, args, Some(env))?;
+        let session = McpSession::new(command, args, Some(env), stderr_verbose)?;
         Ok(Self {
             session: Mutex::new(session),
         })
@@ -207,7 +214,8 @@ mod tests {
     /// **Scenario**: When command does not exist, McpToolSource::new returns an error.
     #[test]
     fn mcp_tool_source_new_invalid_command_returns_error() {
-        let result = McpToolSource::new("_nonexistent_command_that_does_not_exist_xyz_", vec![]);
+        let result =
+            McpToolSource::new("_nonexistent_command_that_does_not_exist_xyz_", vec![], false);
         assert!(result.is_err(), "expected Err for nonexistent command");
     }
 }
