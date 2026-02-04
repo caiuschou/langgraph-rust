@@ -11,7 +11,7 @@ use langgraph::ToolChoiceMode;
 /// Used with [`run_with_options`](crate::run_with_options) or
 /// [`RunConfig::apply_options`](super::RunConfig::apply_options). All fields are optional;
 /// only set fields override the base config (from env).
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct RunOptions {
     /// Override sampling temperature (0–2).
     pub temperature: Option<f32>,
@@ -29,4 +29,22 @@ pub struct RunOptions {
     pub exa_api_key: Option<String>,
     /// Exa MCP server URL override.
     pub mcp_exa_url: Option<String>,
+    /// Enable streaming: show Thinking... / Calling tool / LLM tokens as they arrive (stdout). Default: true.
+    pub stream: bool,
+}
+
+impl Default for RunOptions {
+    fn default() -> Self {
+        Self {
+            temperature: None,
+            tool_choice: None,
+            thread_id: None,
+            user_id: None,
+            db_path: None,
+            mcp_exa: false,
+            exa_api_key: None,
+            mcp_exa_url: None,
+            stream: true,
+        }
+    }
 }

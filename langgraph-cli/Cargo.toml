@@ -25,6 +25,7 @@ embedding = ["langgraph/lance", "langgraph/openai"]
 async-trait = { workspace = true }
 langgraph = { path = "../langgraph", features = ["openai", "sqlite", "mcp"] }
 tokio = { workspace = true }
+tokio-stream = { workspace = true }
 clap = { workspace = true }
 dotenv = { version = "0.15", optional = true }
 async-openai = { version = "0.32", optional = true, features = ["chat-completion"] }

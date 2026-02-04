@@ -40,6 +40,8 @@ pub struct RunConfig {
     pub mcp_remote_cmd: String,
     /// Args for mcp-remote, e.g. `-y mcp-remote`. Default: `-y mcp-remote`.
     pub mcp_remote_args: String,
+    /// When true, run with streaming: show Thinking... / Calling tool / LLM tokens on stdout.
+    pub stream: bool,
 }
 
 impl RunConfig {
@@ -83,6 +85,9 @@ impl RunConfig {
         }
         if let Some(url) = &options.mcp_exa_url {
             self.mcp_exa_url = url.clone();
+        }
+        if options.stream {
+            self.stream = true;
         }
     }
 
@@ -254,6 +259,7 @@ impl RunConfig {
             mcp_exa_url,
             mcp_remote_cmd,
             mcp_remote_args,
+            stream: true,
         })
     }
 }

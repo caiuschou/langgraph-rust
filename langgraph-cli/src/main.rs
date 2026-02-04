@@ -46,6 +46,14 @@ struct Args {
     /// Exa MCP server URL
     #[arg(long, value_name = "URL")]
     mcp_exa_url: Option<String>,
+
+    /// Stream output: show Thinking... / Calling tool / LLM tokens as they arrive (default: on)
+    #[arg(long, default_value_t = true)]
+    stream: bool,
+
+    /// Disable streaming (use when piping or scripting)
+    #[arg(long = "no-stream", action = clap::ArgAction::SetTrue)]
+    no_stream: bool,
 }
 
 fn get_message(args: &Args) -> String {
@@ -72,6 +80,7 @@ fn args_to_run_options(args: &Args) -> Result<RunOptions, String> {
         mcp_exa: args.mcp_exa,
         exa_api_key: args.exa_api_key.clone(),
         mcp_exa_url: args.mcp_exa_url.clone(),
+        stream: args.stream && !args.no_stream,
         ..Default::default()
     })
 }
@@ -101,11 +110,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    for m in &state.messages {
-        match m {
-            Message::System(x) => println!("[System] {}", x),
-            Message::User(x) => println!("[User] {}", x),
-            Message::Assistant(x) => println!("[Assistant] {}", x),
+    if !options.stream {
+        for m in &state.messages {
+            match m {
+                Message::System(x) => println!("[System] {}", x),
+                Message::User(x) => println!("[User] {}", x),
+                Message::Assistant(x) => println!("[Assistant] {}", x),
+            }
         }
     }
     if state.messages.is_empty() {
