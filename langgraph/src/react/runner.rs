@@ -5,6 +5,23 @@
 //! [`StateGraph`](crate::graph::StateGraph), [`ThinkNode`](super::ThinkNode),
 //! [`ActNode`](super::ActNode), [`ObserveNode`](super::ObserveNode), and
 //! [`build_react_initial_state`](super::build_react_initial_state).
+//!
+//! # Streaming UX
+//!
+//! Use [`run_react_graph_stream`] with an `on_event` callback to drive "Thinking...",
+//! "Calling tool", or token-by-token UX. You receive [`StreamEvent`](crate::stream::StreamEvent)
+//! variants: `TaskStart` / `TaskEnd` (node enter/exit), `Messages` (LLM chunks),
+//! `Updates` (per-node state), `Values` (full state). Example:
+//!
+//! ```ignore
+//! run_react_graph_stream(
+//!     user_message, llm, tool_source, checkpointer, store, runnable_config, verbose,
+//!     Some(|ev| {
+//!         if let StreamEvent::TaskStart { id, .. } = ev { println!("Node: {}", id); }
+//!         if let StreamEvent::Messages(ms) = ev { for m in ms { print!("{}", m.content); } }
+//!     }),
+//! ).await?;
+//! ```
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -95,6 +112,7 @@ pub async fn run_react_graph(
         checkpointer,
         store,
         runnable_config,
+        None,
         verbose,
     )?;
     runner.invoke(user_message).await
@@ -130,6 +148,7 @@ where
         checkpointer,
         store,
         runnable_config,
+        None,
         verbose,
     )?;
     runner.stream_with_callback(user_message, on_event).await
@@ -158,17 +177,21 @@ impl From<std::io::Error> for RunError {
 ///
 /// Built from LLM, tool source, and optional checkpointer/store/config.
 /// Supports `invoke` (non-streaming) and `stream` (streaming with StreamEvent).
+/// Optional `system_prompt` is used when building initial state; when `None`,
+/// [`REACT_SYSTEM_PROMPT`](crate::REACT_SYSTEM_PROMPT) is used.
 ///
 /// # Example
 ///
 /// ```ignore
-/// let runner = ReactRunner::new(llm, tool_source, checkpointer, store, config, verbose)?;
+/// let runner = ReactRunner::new(llm, tool_source, checkpointer, store, config, None, verbose)?;
 /// let state = runner.invoke("Hello").await?;
 /// ```
 pub struct ReactRunner {
     compiled: CompiledStateGraph<ReActState>,
     checkpointer: Option<Arc<dyn Checkpointer<ReActState>>>,
     runnable_config: Option<RunnableConfig>,
+    /// When set, used as system prompt in initial state; otherwise REACT_SYSTEM_PROMPT.
+    system_prompt: Option<String>,
 }
 
 impl ReactRunner {
@@ -176,12 +199,14 @@ impl ReactRunner {
     ///
     /// When `verbose` is true, attaches node logging middleware. When both
     /// checkpointer and verbose are set, compiles with both.
+    /// `system_prompt`: when `Some`, used for initial state; when `None`, uses [`REACT_SYSTEM_PROMPT`](crate::REACT_SYSTEM_PROMPT).
     pub fn new(
         llm: Box<dyn LlmClient>,
         tool_source: Box<dyn ToolSource>,
         checkpointer: Option<Arc<dyn Checkpointer<ReActState>>>,
         store: Option<Arc<dyn Store>>,
         runnable_config: Option<RunnableConfig>,
+        system_prompt: Option<String>,
         verbose: bool,
     ) -> Result<Self, CompilationError> {
         let think = ThinkNode::new(llm);
@@ -220,6 +245,7 @@ impl ReactRunner {
             compiled,
             checkpointer,
             runnable_config,
+            system_prompt,
         })
     }
 
@@ -229,7 +255,7 @@ impl ReactRunner {
             user_message,
             self.checkpointer.as_deref(),
             self.runnable_config.as_ref(),
-            None,
+            self.system_prompt.as_deref(),
         )
         .await?;
         let final_state = self.compiled.invoke(state, self.runnable_config.clone()).await?;
@@ -253,7 +279,7 @@ impl ReactRunner {
             user_message,
             self.checkpointer.as_deref(),
             self.runnable_config.as_ref(),
-            None,
+            self.system_prompt.as_deref(),
         )
         .await?;
 
