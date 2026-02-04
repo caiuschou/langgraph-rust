@@ -194,8 +194,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Dependencies and features
 
-- Default `openai` feature: uses the real OpenAI API (requires the `.env` above).
-- Depends on `langgraph` with the `openai` feature (OpenAI-compatible client).
+- Uses the real OpenAI API via `async-openai` (requires the `.env` above).
+- Depends on `langgraph`; OpenAI-compatible chat is provided by the CLI’s own dependencies.
 
 ## License
 
