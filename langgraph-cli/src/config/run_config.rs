@@ -168,11 +168,18 @@ impl RunConfig {
             db_path: self.db_path.clone(),
             thread_id: self.thread_id().map(ToString::to_string),
             user_id: self.user_id().map(ToString::to_string),
+            system_prompt: None,
             exa_api_key: self.tool_source.exa_api_key.clone(),
             mcp_exa_url: self.mcp_exa_url.clone(),
             mcp_remote_cmd: self.mcp_remote_cmd.clone(),
             mcp_remote_args: self.mcp_remote_args.clone(),
             mcp_verbose: self.verbose,
+            openai_api_key: Some(self.api_key.clone()),
+            openai_base_url: Some(self.api_base.clone()),
+            model: Some(self.model.clone()),
+            embedding_api_key: self.embedding_api_key.clone(),
+            embedding_base_url: self.embedding_api_base.clone(),
+            embedding_model: self.embedding_model.clone(),
         }
     }
 
