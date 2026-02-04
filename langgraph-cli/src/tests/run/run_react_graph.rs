@@ -1,11 +1,16 @@
 //! Unit tests for [`run_react_graph`](crate::run::common::run_react_graph).
 //!
 //! BDD-style scenarios: no checkpointer/store path, with store path, single round with tool call,
-//! empty user message. Each test documents Given/When/Then and the behaviour under test.
+//! empty user message, multi-turn from checkpoint. Each test documents Given/When/Then and the
+//! behaviour under test.
 
 use std::sync::Arc;
 
-use langgraph::{Message, MockLlm, MockToolSource, ToolSource, REACT_SYSTEM_PROMPT};
+use langgraph::{
+    Checkpoint, CheckpointSource, Message, MemorySaver, MockLlm, MockToolSource, ReActState,
+    ToolSource, REACT_SYSTEM_PROMPT,
+};
+use langgraph::Checkpointer;
 
 use crate::run::run_react_graph;
 
@@ -165,4 +170,80 @@ async fn run_react_graph_state_starts_with_system_prompt() {
         Message::System(s) => assert_eq!(s, REACT_SYSTEM_PROMPT),
         _ => panic!("first message should be System, got {:?}", first),
     }
+}
+
+/// **Scenario**: When checkpointer and runnable_config with thread_id are set and the checkpointer
+/// has a previous checkpoint for that thread, run_react_graph loads that state, appends the new
+/// user message, and runs one round; the final state contains the history plus the new turn.
+///
+/// Given: MemorySaver with a checkpoint for thread "t1" containing messages [system, user("first"),
+/// assistant("Reply to first")]; MockLlm that returns no tool_calls with "Reply to second"
+/// When: run_react_graph("second", llm, tool_source, Some(checkpointer), None, Some(config with thread_id "t1")) is called
+/// Then: result is Ok; state.messages contains Message::User("first"), Message::Assistant("Reply to first"),
+/// Message::User("second"), and Message::Assistant("Reply to second").
+#[tokio::test]
+async fn run_react_graph_with_checkpoint_loads_history_and_appends_new_turn() {
+    let history_state = ReActState {
+        messages: vec![
+            Message::system(REACT_SYSTEM_PROMPT),
+            Message::user("first".to_string()),
+            Message::Assistant("Reply to first".to_string()),
+        ],
+        tool_calls: vec![],
+        tool_results: vec![],
+        turn_count: 0,
+    };
+    let checkpoint = Checkpoint::from_state(history_state, CheckpointSource::Update, 0);
+    let saver: MemorySaver<ReActState> = MemorySaver::new();
+    let config = langgraph::RunnableConfig {
+        thread_id: Some("t1".into()),
+        checkpoint_id: None,
+        checkpoint_ns: String::new(),
+        user_id: None,
+    };
+    saver.put(&config, &checkpoint).await.unwrap();
+
+    let llm = MockLlm::with_no_tool_calls("Reply to second");
+    let tool_source = MockToolSource::get_time_example();
+    let llm: Box<dyn langgraph::LlmClient> = Box::new(llm);
+    let tool_source: Box<dyn ToolSource> = Box::new(tool_source);
+    let cp: Arc<dyn Checkpointer<ReActState>> = Arc::new(saver);
+
+    let result = run_react_graph(
+        "second",
+        llm,
+        tool_source,
+        Some(cp),
+        None,
+        Some(config),
+    )
+    .await;
+
+    let state = result.expect("run_react_graph with checkpoint should succeed");
+    let has_first_user = state
+        .messages
+        .iter()
+        .any(|m| matches!(m, Message::User(s) if s == "first"));
+    assert!(has_first_user, "state should contain history user message 'first'");
+    let has_first_assistant = state
+        .messages
+        .iter()
+        .any(|m| matches!(m, Message::Assistant(s) if s == "Reply to first"));
+    assert!(
+        has_first_assistant,
+        "state should contain history assistant message 'Reply to first'"
+    );
+    let has_second_user = state
+        .messages
+        .iter()
+        .any(|m| matches!(m, Message::User(s) if s == "second"));
+    assert!(has_second_user, "state should contain new user message 'second'");
+    let has_second_assistant = state
+        .messages
+        .iter()
+        .any(|m| matches!(m, Message::Assistant(s) if s == "Reply to second"));
+    assert!(
+        has_second_assistant,
+        "state should contain new assistant message 'Reply to second'"
+    );
 }
