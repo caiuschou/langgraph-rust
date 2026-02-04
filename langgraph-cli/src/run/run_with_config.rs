@@ -11,7 +11,7 @@ use langgraph::ChatOpenAI;
 
 use crate::config::RunConfig;
 
-use super::common::run_react_graph;
+use super::common::{run_react_graph, run_react_graph_stream};
 use super::Error;
 
 /// Run ReAct graph with given config; does not read .env, returns final state.
@@ -42,13 +42,25 @@ pub async fn run_with_config(
     }
     let llm: Box<dyn langgraph::LlmClient> = Box::new(llm);
 
-    run_react_graph(
-        user_message,
-        llm,
-        ctx.tool_source,
-        ctx.checkpointer,
-        ctx.store,
-        ctx.runnable_config,
-    )
-    .await
+    if config.stream {
+        run_react_graph_stream(
+            user_message,
+            llm,
+            ctx.tool_source,
+            ctx.checkpointer,
+            ctx.store,
+            ctx.runnable_config,
+        )
+        .await
+    } else {
+        run_react_graph(
+            user_message,
+            llm,
+            ctx.tool_source,
+            ctx.checkpointer,
+            ctx.store,
+            ctx.runnable_config,
+        )
+        .await
+    }
 }
