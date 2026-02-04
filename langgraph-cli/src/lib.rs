@@ -1,21 +1,32 @@
-//! langgraph-cli library: reusable ReAct run logic for other crates.
+//! # langgraph-cli
 //!
-//! Reads OpenAI config from .env, builds think → act → observe graph and runs it, returns final state.
+//! Reusable ReAct run logic for the LangGraph Rust ecosystem. Reads config from env (or overrides),
+//! builds a think → act → observe graph, and returns the final [`ReActState`].
 //!
-//! ## Usage
+//! ## Main modules
 //!
-//! Default run (config from env):
+//! - **Config**: [`RunConfig`], [`RunOptions`], [`MemoryConfig`], [`ToolSourceConfig`] — build
+//!   run configuration from env or programmatic overrides.
+//! - **Run**: [`run`], [`run_with_options`], [`run_with_config`] — execute the ReAct graph and
+//!   get back state; [`build_config_summary`] for human-readable config summary.
 //!
-//! ```rust,no_run,ignore
+//! ## Quick start
+//!
+//! Default run (config from `.env` and environment):
+//!
+//! ```rust,no_run
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! let state = langgraph_cli::run("user message").await?;
 //! for m in &state.messages {
 //!     // handle System / User / Assistant messages
 //! }
+//! # Ok(()) }
 //! ```
 //!
 //! Run with overrides (e.g. temperature, memory, Exa MCP) without parsing CLI:
 //!
-//! ```rust,no_run,ignore
+//! ```rust,no_run
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! use langgraph_cli::{run_with_options, RunOptions};
 //!
 //! let options = RunOptions {
@@ -24,7 +35,13 @@
 //!     ..Default::default()
 //! };
 //! let state = run_with_options("user message", &options).await?;
+//! # Ok(()) }
 //! ```
+//!
+//! ## Binary
+//!
+//! The `langgraph-cli` binary parses CLI args into [`RunOptions`] and calls [`run_with_options`].
+//! Run: `cargo run -p langgraph-cli -- "your message"`.
 
 mod config;
 mod run;

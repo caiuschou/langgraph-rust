@@ -1,12 +1,27 @@
 //! ReAct graph nodes: Think, Act, Observe, and routing utilities.
 //!
+//! This module provides the three nodes and runner for the minimal ReAct chain
+//! think → act → observe. Each node implements [`Node`](crate::graph::Node) with state type [`ReActState`].
 //! Design: docs/rust-langgraph/13-react-agent-design.md §8.3 stage 3.
-//! Three nodes implementing `Node<ReActState>` for the minimal ReAct chain
-//! think → act → observe (linear, then conditional edge in stage 5).
+//!
+//! # Main types
+//!
+//! - **[`ThinkNode`]**: Calls the LLM with current messages; may output tool calls. Add after
+//!   [`ObserveNode`] in the graph so the cycle is observe → think → (condition) → act or end.
+//! - **[`ActNode`]**: Executes [`state.tool_calls`](crate::state::ReActState::tool_calls) via
+//!   [`ToolSource`](crate::tool_source::ToolSource) and fills `tool_results`. Use
+//!   [`HandleToolErrors`] to customize error handling.
+//! - **[`ObserveNode`]**: Merges tool results into messages and clears `tool_calls`/`tool_results`;
+//!   increments turn count. Typically the last node before looping back to think or ending.
+//! - **[`ReactRunner`]**: Holds compiled graph, checkpointer, store, LLM, and tool source. Use
+//!   [`run_react_graph`] or [`run_react_graph_stream`] to run; build state with
+//!   [`build_react_initial_state`].
+//! - **[`tools_condition`]**: Conditional routing: if there are tool calls, go to act; else end.
+//!   Returns [`ToolsConditionResult`]; use [`.as_str()`](ToolsConditionResult::as_str) for node IDs.
 //!
 //! # Routing
 //!
-//! Use [`tools_condition`] for conditional routing based on tool calls:
+//! Use [`tools_condition`] for conditional edges from the think node:
 //!
 //! ```rust,ignore
 //! graph.add_conditional_edges(

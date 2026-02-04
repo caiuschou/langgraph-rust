@@ -4,29 +4,40 @@
 //! with a simple **state-in, state-out** design: one shared state type flows through nodes,
 //! with no separate Input/Output types.
 //!
-//! ## Design Principles
+//! ## Design principles
 //!
-//! - **Single state type**: Each graph uses one state struct (e.g. `AgentState`) that all
+//! - **Single state type**: Each graph uses one state struct (e.g. [`ReActState`]) that all
 //!   nodes read from and write to.
-//! - **One node per `Agent::run`**: Each agent implements a single step: receive state,
-//!   return updated state. No streaming or complex I/O in the core API.
-//! - **State graphs**: Compose agents into `StateGraph` with conditional edges. Design docs:
+//! - **One node per [`Agent::run`]**: Each agent implements a single step:
+//!   receive state, return updated state. No streaming or complex I/O in the core API.
+//! - **State graphs**: Compose agents into [`StateGraph`] with conditional edges. Design docs:
 //!   `docs/rust-langgraph/09-minimal-agent-design.md`, `docs/rust-langgraph/11-state-graph-design.md`.
 //!
-//! ## Main Modules
+//! ## Main modules
 //!
-//! - [`graph`]: `StateGraph`, `CompiledStateGraph`, `Node`, `Next` — build and run state graphs.
-//! - [`react`]: ReAct-style nodes (`ThinkNode`, `ActNode`, `ObserveNode`) for reasoning + tool use.
-//! - [`llm`]: `LlmClient` trait, `MockLlm`, and optional `ChatOpenAI` via features.
-//! - [`memory`]: Checkpointing, stores, and optional SQLite/LanceDB persistence.
-//! - [`tool_source`]: Tool specs and execution; optional MCP integration.
-//! - [`traits`]: Core `Agent` trait — implement for custom agents.
+//! - [`graph`]: [`StateGraph`], [`CompiledStateGraph`], [`Node`], [`Next`] — build and run state graphs.
+//! - [`react`]: ReAct nodes ([`ThinkNode`], [`ActNode`], [`ObserveNode`]), [`run_react_graph`], [`tools_condition`].
+//! - [`react_builder`]: [`ReactBuildConfig`], [`build_react_run_context`], [`build_react_runner_with_openai`].
+//! - [`state`]: [`ReActState`], [`ToolCall`], [`ToolResult`] — state and tool types for ReAct.
+//! - [`llm`]: [`LlmClient`] trait, [`MockLlm`], optional [`ChatOpenAI`].
+//! - [`memory`]: Checkpointing, [`Store`], [`Checkpointer`]; optional SQLite / LanceDB.
+//! - [`tool_source`]: [`ToolSource`], [`ToolSpec`]; optional MCP ([`McpToolSource`]).
+//! - [`traits`]: Core [`Agent`] trait — implement for custom agents.
+//! - [`message`]: [`Message`] (System / User / Assistant).
+//! - [`stream`]: [`StreamWriter`], [`StreamEvent`], streaming modes for graph runs.
+//! - [`config`]: Config summaries for LLM, memory, tools (e.g. [`RunConfigSummary`]).
+//! - [`cache`]: [`Cache`] trait and [`InMemoryCache`] for LLM response caching.
+//! - [`channels`]: State update strategies ([`Channel`], [`LastValue`], [`Topic`], etc.).
+//! - [`managed`]: [`ManagedValue`], [`IsLastStep`] for graph state.
+//! - [`tools`]: [`register_mcp_tools`], [`McpToolAdapter`]; conversation and memory tools.
+//!
+//! Key types are re-exported at crate root so you can `use langgraph::{Agent, StateGraph, Message, ReActState};`.
 //!
 //! ## Features
 //!
 //! - `lance`: LanceDB vector store for long-term memory (optional; heavy dependency).
 //!
-//! ## Quick Start
+//! ## Quick start
 //!
 //! ```rust,no_run
 //! use async_trait::async_trait;
@@ -62,8 +73,8 @@
 //!
 //! ## Examples
 //!
-//! Concrete agents and state types (e.g. `EchoAgent`, `AgentState`) live in `langgraph-examples`,
-//! not in this framework crate.
+//! Concrete agents and state types (e.g. `EchoAgent`, `AgentState`) live in the `langgraph-examples`
+//! crate, not in this framework. Entrypoints: `echo`, `react_linear`, `react_memory`, `react_mcp`.
 
 pub mod cache;
 pub mod channels;
