@@ -18,14 +18,18 @@
 
 mod act_node;
 mod observe_node;
+mod runner;
 mod think_node;
+mod with_node_logging;
 
 pub use act_node::{
     ActNode, ErrorHandlerFn, HandleToolErrors, DEFAULT_EXECUTION_ERROR_TEMPLATE,
     DEFAULT_TOOL_ERROR_TEMPLATE,
 };
 pub use observe_node::ObserveNode;
+pub use runner::{build_react_initial_state, run_react_graph, run_react_graph_stream, ReactRunner, RunError};
 pub use think_node::ThinkNode;
+pub use with_node_logging::WithNodeLogging;
 
 use crate::state::ReActState;
 

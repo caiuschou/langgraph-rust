@@ -94,8 +94,9 @@ pub use error::AgentError;
 pub use graph::{
     generate_dot, generate_text, log_graph_complete, log_graph_error, log_graph_start,
     log_node_complete, log_node_start, log_state_update, CompilationError, CompiledStateGraph,
-    DefaultInterruptHandler, GraphInterrupt, Interrupt, InterruptHandler, NameNode, Next, Node,
-    NodeMiddleware, RetryPolicy, RunContext, Runtime, StateGraph, END, START,
+    DefaultInterruptHandler, GraphInterrupt, Interrupt, InterruptHandler, LoggingNodeMiddleware,
+    NameNode, Next, Node, NodeMiddleware, RetryPolicy, RunContext, Runtime, StateGraph, END,
+    START,
 };
 #[cfg(feature = "openai")]
 pub use llm::ChatOpenAI;
@@ -114,9 +115,10 @@ pub use memory::{Embedder, LanceStore};
 pub use memory::{SqliteSaver, SqliteStore};
 pub use message::Message;
 pub use react::{
-    tools_condition, ActNode, ErrorHandlerFn, HandleToolErrors, ObserveNode, ThinkNode,
-    ToolsConditionResult, DEFAULT_EXECUTION_ERROR_TEMPLATE, DEFAULT_TOOL_ERROR_TEMPLATE,
-    REACT_SYSTEM_PROMPT,
+    build_react_initial_state, run_react_graph, run_react_graph_stream, tools_condition, ActNode,
+    ErrorHandlerFn, HandleToolErrors, ObserveNode, ReactRunner, RunError, ThinkNode,
+    ToolsConditionResult, WithNodeLogging, DEFAULT_EXECUTION_ERROR_TEMPLATE,
+    DEFAULT_TOOL_ERROR_TEMPLATE, REACT_SYSTEM_PROMPT,
 };
 #[cfg(all(feature = "sqlite", feature = "mcp"))]
 pub use react_builder::{build_react_run_context, ReactBuildConfig, ReactRunContext};

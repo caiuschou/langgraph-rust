@@ -7,6 +7,7 @@ mod compile_error;
 mod compiled;
 mod interrupt;
 mod logging;
+mod logging_middleware;
 mod name_node;
 mod next;
 mod node;
@@ -24,6 +25,7 @@ pub use logging::{
     log_graph_complete, log_graph_error, log_graph_start, log_node_complete, log_node_start,
     log_state_update,
 };
+pub use logging_middleware::LoggingNodeMiddleware;
 pub use name_node::NameNode;
 pub use next::Next;
 pub use node::Node;
