@@ -83,6 +83,20 @@ pub async fn run_with_config(
                     StreamEvent::Updates { state, .. } => {
                         last_tool_calls = state.tool_calls.clone();
                     }
+                    StreamEvent::Usage {
+                        prompt_tokens,
+                        completion_tokens,
+                        total_tokens,
+                    } => {
+                        if config.verbose {
+                            let _ = writeln!(
+                                std::io::stderr(),
+                                "[LLM usage] prompt_tokens={} completion_tokens={} total_tokens={}",
+                                prompt_tokens, completion_tokens, total_tokens
+                            );
+                            let _ = std::io::stderr().flush();
+                        }
+                    }
                     _ => {}
                 }
             }),
