@@ -183,7 +183,7 @@ impl RunConfig {
         }
     }
 
-    #[cfg(all(feature = "embedding", feature = "openai"))]
+    #[cfg(feature = "embedding")]
     /// Create an OpenAIEmbedder from this configuration.
     ///
     /// # Examples

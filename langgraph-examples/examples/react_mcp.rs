@@ -23,22 +23,11 @@
 
 use std::sync::Arc;
 
-use langgraph::state::ToolCall;
 use langgraph::{
-    ActNode, CompiledStateGraph, Message, MockLlm, ObserveNode, ReActState, StateGraph, ThinkNode,
-    END, START,
+    ActNode, CompiledStateGraph, McpToolSource, Message, MockLlm, ObserveNode, ReActState,
+    StateGraph, ThinkNode, ToolCall, END, START,
 };
 
-#[cfg(feature = "mcp")]
-use langgraph::McpToolSource;
-
-#[cfg(not(feature = "mcp"))]
-fn main() {
-    eprintln!("Build with --features mcp to run this example.");
-    std::process::exit(1);
-}
-
-#[cfg(feature = "mcp")]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let input = std::env::args()

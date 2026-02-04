@@ -35,13 +35,6 @@ use langgraph::{
     StateGraph, ThinkNode, ToolSource, END, REACT_SYSTEM_PROMPT, START,
 };
 
-#[cfg(not(feature = "openai"))]
-fn main() {
-    eprintln!("Build with --features openai to run this example (mcp is default).");
-    std::process::exit(1);
-}
-
-#[cfg(feature = "openai")]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv::dotenv().ok();

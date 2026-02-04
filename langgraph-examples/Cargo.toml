@@ -49,14 +49,11 @@ path = "examples/openai_embedding.rs"
 required-features = ["embedding"]
 
 [features]
-default = ["openai", "mcp"]
-openai = []
-mcp = []
 # LanceDB vector store for LanceStore (react_memory example). Disabled by default so `cargo test` does not pull in lancedb.
 embedding = ["langgraph/lance"]
 
 [dependencies]
-langgraph = { path = "../langgraph", features = ["openai", "sqlite"] }
+langgraph = { path = "../langgraph" }
 tokio = { workspace = true }
 async-trait = { workspace = true }
 dotenv = { workspace = true }

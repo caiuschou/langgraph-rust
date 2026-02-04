@@ -15,21 +15,18 @@ name = "langgraph"
 path = "src/main.rs"
 
 [features]
-default = ["openai"]
-# Use real OpenAI (reads OPENAI_API_BASE, OPENAI_API_KEY, OPENAI_MODEL from .env)
-openai = ["langgraph/openai", "dep:dotenv", "dep:async-openai"]
-# Add embeddings support for vector search
-embedding = ["langgraph/lance", "langgraph/openai"]
+# Add embeddings support for vector search (LanceDB)
+embedding = ["langgraph/lance"]
 
 [dependencies]
 async-trait = { workspace = true }
-langgraph = { path = "../langgraph", features = ["openai", "sqlite", "mcp", "tracing"] }
+langgraph = { path = "../langgraph" }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tokio = { workspace = true }
 tokio-stream = { workspace = true }
 clap = { workspace = true }
-dotenv = { version = "0.15", optional = true }
-async-openai = { version = "0.32", optional = true, features = ["chat-completion"] }
+dotenv = { version = "0.15" }
+async-openai = { version = "0.32", features = ["chat-completion"] }
 sqlx = { version = "0.8", features = ["sqlite"] }
 chrono = { version = "0.4" }
 serde_json = "1"
