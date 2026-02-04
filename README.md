@@ -44,12 +44,8 @@ async-trait = "0.1"
 
 ### Feature Flags
 
-- `mcp` (default): Enable MCP tool source for external tools
-- `sqlite` (default): Enable SQLite-based checkpointing and storage
-- `in-memory-vector` (default): Enable in-memory vector store with semantic search
-- `openai`: Enable OpenAI-compatible chat (e.g., OpenAI) via `async-openai`
-- `lance`: Enable LanceDB vector store for long-term memory
-- `tracing`: Enable structured logging via the tracing crate
+- `lance`: Enable LanceDB vector store for long-term memory (optional; heavy dependency).  
+  MCP, SQLite checkpointing/storage, in-memory vector store, and OpenAI-compatible chat are included by default (no feature gate).
 
 ## Configuration
 
@@ -121,7 +117,7 @@ let vectors = embedder.embed(&["Hello, world!"])?;
 use async_trait::async_trait;
 use langgraph::{Agent, AgentError, Message};
 
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 struct MyState {
     messages: Vec<Message>,
 }
@@ -975,11 +971,7 @@ langgraph-rust/
 
 ## Testing
 
-The project includes comprehensive test coverage:
-
-- **154 unit tests** - All passing ✅
-- **44 doc tests** - All passing ✅
-- Tests cover all core modules: channels, runtime, cache, retry, interrupt, logging, visualization, streaming, and graph execution
+The project includes comprehensive test coverage across core modules: channels, runtime, cache, retry, interrupt, logging, visualization, streaming, and graph execution.
 
 Run tests:
 ```bash
