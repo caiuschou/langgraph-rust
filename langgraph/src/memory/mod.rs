@@ -49,7 +49,7 @@ mod in_memory_store;
 #[cfg(feature = "in-memory-vector")]
 mod in_memory_vector_store;
 mod memory_saver;
-#[cfg(all(feature = "lance", feature = "openai"))]
+#[cfg(feature = "openai")]
 mod openai_embedder;
 mod serializer;
 mod store;
@@ -86,7 +86,7 @@ pub use embedder::Embedder;
 pub use in_memory_vector_store::InMemoryVectorStore;
 #[cfg(feature = "lance")]
 pub use lance_store::LanceStore;
-#[cfg(all(feature = "lance", feature = "openai"))]
+#[cfg(feature = "openai")]
 pub use openai_embedder::OpenAIEmbedder;
 #[cfg(feature = "sqlite")]
 pub use sqlite_saver::SqliteSaver;

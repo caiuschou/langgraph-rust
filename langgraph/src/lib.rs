@@ -102,7 +102,7 @@ pub use graph::{
 pub use llm::ChatOpenAI;
 pub use llm::{LlmClient, LlmResponse, MockLlm, ToolChoiceMode};
 pub use managed::{IsLastStep, ManagedValue};
-#[cfg(all(feature = "lance", feature = "openai"))]
+#[cfg(feature = "openai")]
 pub use memory::OpenAIEmbedder;
 pub use memory::{
     Checkpoint, CheckpointError, CheckpointListItem, CheckpointMetadata, CheckpointSource,
