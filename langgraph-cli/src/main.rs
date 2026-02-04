@@ -126,7 +126,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    if !options.stream {
+    if options.stream {
+        // Ensure the final reply is visible: use last non-empty Assistant (last one can be empty when the turn only had tool_calls).
+        println!();
+        match state
+            .messages
+            .iter()
+            .rev()
+            .find(|m| matches!(m, Message::Assistant(c) if !c.is_empty()))
+        {
+            Some(Message::Assistant(content)) => println!("[Assistant] {}", content),
+            _ => eprintln!(
+                "[No assistant text in state ({} messages); last turn may have been tool-only]",
+                state.messages.len()
+            ),
+        }
+    } else {
         for m in &state.messages {
             match m {
                 Message::System(x) => println!("[System] {}", x),
