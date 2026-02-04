@@ -49,3 +49,47 @@ fn main_with_invalid_args_returns_error() {
         output.status
     );
 }
+
+/// **Scenario**: When --verbose is passed, stderr contains the four config summary lines
+/// (LLM config, Memory config, Tools, Embedding) before graph execution.
+///
+/// Sets OPENAI_API_KEY so config loads; summary is printed after build_react_run_context.
+#[test]
+fn main_with_verbose_prints_config_summary_to_stderr() {
+    let output = Command::new("cargo")
+        .args([
+            "run",
+            "-p",
+            "langgraph-cli",
+            "--bin",
+            "langgraph",
+            "--",
+            "--verbose",
+            "-m",
+            "hi",
+        ])
+        .env("OPENAI_API_KEY", "test-key-for-verbose-test")
+        .output();
+    let output = output.expect("failed to run cargo");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("[LLM config]"),
+        "stderr should contain [LLM config], got: {}",
+        stderr
+    );
+    assert!(
+        stderr.contains("[Memory config]"),
+        "stderr should contain [Memory config], got: {}",
+        stderr
+    );
+    assert!(
+        stderr.contains("[Tools]"),
+        "stderr should contain [Tools], got: {}",
+        stderr
+    );
+    assert!(
+        stderr.contains("[Embedding]"),
+        "stderr should contain [Embedding], got: {}",
+        stderr
+    );
+}

@@ -12,6 +12,7 @@ use langgraph::ChatOpenAI;
 
 use crate::config::RunConfig;
 
+use super::build_config_summary;
 use super::Error;
 
 /// Run ReAct graph with given config; does not read .env, returns final state.
@@ -23,6 +24,10 @@ pub async fn run_with_config(
     let ctx = langgraph::build_react_run_context(&build_config)
         .await
         .map_err(|e| Box::new(e) as Error)?;
+
+    if config.verbose {
+        build_config_summary(config).print_to_stderr();
+    }
 
     let openai_config = OpenAIConfig::new()
         .with_api_base(&config.api_base)

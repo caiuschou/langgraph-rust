@@ -4,12 +4,14 @@
 
 pub use crate::config::Error;
 
+mod config_summary;
 mod run_with_config;
 
 use langgraph::ReActState;
 
 use crate::config::{RunConfig, RunOptions};
 
+pub use config_summary::build_config_summary;
 pub use run_with_config::run_with_config;
 
 /// Run ReAct graph with default config (from .env), returns final state.

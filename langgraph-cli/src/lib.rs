@@ -31,7 +31,7 @@ mod run;
 
 pub use config::{Error, MemoryConfig, RunConfig, RunOptions, ToolSourceConfig};
 pub use langgraph::{Message, ReActState};
-pub use run::{run, run_with_config, run_with_options};
+pub use run::{build_config_summary, run, run_with_config, run_with_options};
 
 #[cfg(test)]
 mod tests;
