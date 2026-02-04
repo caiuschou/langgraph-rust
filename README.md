@@ -16,7 +16,7 @@ LangGraph-rust provides a lightweight framework for building stateful AI agents 
 ## Features
 
 - **State Graphs**: Build and run stateful agent graphs with conditional routing
-- **ReAct Pattern**: Built-in support for reasoning + acting loops (Think → Act → Observe)
+- **ReAct Pattern**: Built-in support for reasoning + acting loops (Think → Act → Observe); **ReactRunner** and **build_react_runner** for config-driven ReAct (optional persistence, MCP, memory tools)
 - **LLM Integration**: Flexible `LlmClient` trait with mock and OpenAI-compatible implementations
 - **Memory & Checkpointing**: In-memory and persistent storage for agent state
 - **Tool Integration**: Extensible tool system with MCP (Model Context Protocol) support
@@ -78,6 +78,19 @@ cp .env.example .env
 | `EMBEDDING_API_KEY` | Embeddings API key (optional, uses OPENAI_API_KEY if not set) | `OPENAI_API_KEY` | `sk-...` |
 | `EMBEDDING_API_BASE` | Embeddings API base URL (optional, uses OPENAI_API_BASE if not set) | `OPENAI_API_BASE` | `https://api.openai.com/v1` |
 | `EMBEDDING_MODEL` | Embeddings model name | `text-embedding-3-small` | `text-embedding-3-small` |
+
+#### ReAct / ReactRunner (ReactBuildConfig::from_env())
+
+When using the config-driven ReAct API (`ReactBuildConfig::from_env()`, `build_react_runner`), the following are read in addition to the above:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `THREAD_ID` | Thread ID for short-term memory (checkpointer); enables multi-turn per thread | - |
+| `USER_ID` | User ID for long-term memory (store); with embedding config enables semantic memory | - |
+| `DB_PATH` | SQLite path for checkpointer/store | `memory.db` at build time |
+| `REACT_SYSTEM_PROMPT` | Override default ReAct system prompt | built-in `REACT_SYSTEM_PROMPT` |
+| `EXA_API_KEY` | When set, enables Exa MCP for web search | - |
+| `OPENAI_BASE_URL` | Used by default LLM when `build_react_runner(config, None, _)` | - |
 
 #### Using Different Providers
 
@@ -252,9 +265,39 @@ User Query → Think → Act → Observe → Think → ...
 2. **Act**: Execute tool calls (if any) and gather results
 3. **Observe**: LLM observes the results and decides whether to answer or continue
 
-### Basic ReAct Agent
+### Recommended: config-driven ReAct with ReactRunner
 
-Here's a complete example using a mock LLM and tool source:
+For most use cases, use **ReactBuildConfig** and **build_react_runner** so the library builds the graph, checkpointer, store, and tool source from config. Set `OPENAI_API_KEY` and `OPENAI_MODEL` (and optionally `THREAD_ID`, `USER_ID`, `EXA_API_KEY`, embedding vars) in `.env`, then:
+
+```rust
+use langgraph::{build_react_runner, ReactBuildConfig};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    dotenv::dotenv().ok();
+
+    let config = ReactBuildConfig::from_env();
+    // llm: None => use config's OPENAI_* to build default LLM
+    let runner = build_react_runner(&config, None, false).await?;
+
+    let result = runner.invoke("What time is it?").await?;
+
+    if let Some(reply) = result.last_assistant_reply() {
+        println!("{}", reply);
+    }
+    Ok(())
+}
+```
+
+- **Multi-turn**: set `THREAD_ID` so the runner uses a checkpointer and resumes from the last checkpoint.
+- **Long-term memory**: set `USER_ID` and embedding-related env vars to enable semantic memory (and memory tools).
+- **Custom system prompt**: set `config.system_prompt` (or `REACT_SYSTEM_PROMPT` in env) before calling `build_react_runner`.
+- **Streaming**: use `runner.stream_with_callback(user_message, Some(|ev| { ... })).await` and handle `StreamEvent` (e.g. `TaskStart`, `Messages`, `Updates`).
+- **Custom invoke flow**: use `build_react_initial_state(user_message, checkpointer, runnable_config, system_prompt)` to build initial state and pass it to your own compiled graph.
+
+### Basic ReAct Agent (manual graph)
+
+Alternatively, build the Think → Act → Observe graph by hand. Here's a complete example using a mock LLM and tool source:
 
 ```rust
 use std::sync::Arc;
@@ -291,25 +334,21 @@ async fn main() {
         ],
         tool_calls: vec![],
         tool_results: vec![],
+        turn_count: 0,
     };
 
     // Run the agent
     let result = compiled.invoke(state, None).await.unwrap();
 
-    // Print the conversation
-    for msg in &result.messages {
-        match msg {
-            Message::System(s) => println!("[System] {}", s),
-            Message::User(s) => println!("[User] {}", s),
-            Message::Assistant(s) => println!("[Assistant] {}", s),
-        }
+    if let Some(reply) = result.last_assistant_reply() {
+        println!("{}", reply);
     }
 }
 ```
 
-### ReAct Agent with Real LLM
+### ReAct Agent with Real LLM (manual graph)
 
-For production use, replace the mock components with real implementations:
+For production use, replace the mock components with real implementations. You can still use the recommended `build_react_runner` flow above; this example shows the same with a manually built graph:
 
 ```rust
 use std::sync::Arc;
@@ -353,9 +392,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ],
         tool_calls: vec![],
         tool_results: vec![],
+        turn_count: 0,
     };
 
     let result = compiled.invoke(state, None).await?;
+    if let Some(reply) = result.last_assistant_reply() {
+        println!("{}", reply);
+    }
     Ok(())
 }
 ```
@@ -689,6 +732,8 @@ graph.add_node("act", Arc::new(ActNode::new(Box::new(tools))));
 graph.add_node("observe", Arc::new(ObserveNode::new()));
 ```
 
+For a config-driven run without building the graph yourself, use `ReactBuildConfig::from_env()` and `build_react_runner`. To get the final assistant reply from `ReActState`, use `state.last_assistant_reply()` (returns the last Assistant message content, or `None` if there is none).
+
 ### Memory: Short-term & Long-term
 
 LangGraph-rust provides two types of memory for different use cases:
@@ -732,14 +777,13 @@ let result2 = compiled.invoke(result, Some(config)).await?;
 
 - Store preferences, facts, documents across sessions
 - Namespace isolation (e.g., by user_id)
-- Optional semantic search via LanceDB vector store
+- Optional semantic search via LanceDB or sqlite-vec vector store
 
 **Implementations**:
-- `MemorySaver` - In-memory (dev/tests)
-- `SqliteSaver` - Persistent SQLite file (production)
 - `InMemoryStore` - In-memory (dev/tests)
 - `SqliteStore` - Persistent SQLite file (key-value search)
-- `LanceStore` - Persistent LanceDB vector store (semantic search)
+- `SqliteVecStore` - Persistent SQLite file with vector search (semantic search)
+- `LanceStore` - Persistent LanceDB vector store (semantic search, feature: `lance`)
 - `InMemoryVectorStore` - In-memory vector store with semantic search (feature: `in-memory-vector`)
 
 ```rust
