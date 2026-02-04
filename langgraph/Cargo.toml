@@ -35,6 +35,10 @@ arrow-array = { version = "56.2", optional = true }
 arrow-schema = { version = "56.2", optional = true }
 futures = { version = "0.3", optional = true }
 
+# SQLite vector store (SqliteVecStore) for long-term memory with semantic search.
+sqlite-vec = "0.1"
+
 [dev-dependencies]
 serde = { version = "1.0", features = ["derive"] }
 tempfile = "3"
+

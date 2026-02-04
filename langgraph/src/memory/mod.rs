@@ -35,10 +35,11 @@
 //! |------------------|-------------|-----------------------------|----------|
 //! | [`InMemoryStore`] | In-memory   | String filter (key/value)   | —        |
 //! | [`SqliteStore`]   | SQLite file | String filter               | — |
+//! | [`SqliteVecStore`] | SQLite file | Vector similarity (semantic) | — |
 //! | [`LanceStore`]      | LanceDB     | Vector similarity (semantic)| `lance`  |
 //! | [`InMemoryVectorStore`] | In-memory | Vector similarity (semantic) | — |
 //!
-//! `LanceStore` and `InMemoryVectorStore` require an `Embedder` for vector indexing; search with `query` uses semantic similarity.
+//! `SqliteVecStore`, `LanceStore`, and `InMemoryVectorStore` require an `Embedder` for vector indexing; search with `query` uses semantic similarity.
 
 mod checkpoint;
 mod checkpointer;
@@ -56,6 +57,7 @@ mod uuid6;
 mod lance_store;
 mod sqlite_saver;
 mod sqlite_store;
+mod sqlite_vec_store;
 
 pub use checkpoint::{
     writes_idx_map, ChannelVersions, Checkpoint, CheckpointListItem, CheckpointMetadata,
@@ -82,3 +84,4 @@ pub use lance_store::LanceStore;
 pub use openai_embedder::OpenAIEmbedder;
 pub use sqlite_saver::SqliteSaver;
 pub use sqlite_store::SqliteStore;
+pub use sqlite_vec_store::SqliteVecStore;
