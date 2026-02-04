@@ -2,7 +2,14 @@ CLAUDE.md
 CALUDE.md
 AGENTS.md
 
-docs
+# Third-party code (not committed)
+thirdparty/
+
+# Documentation
+# Keep most docs out of git, but track rust-langgraph specs/plans.
+docs/**
+!docs/rust-langgraph/
+!docs/rust-langgraph/**
 
 idea/
 lancedb_data/
@@ -37,8 +44,10 @@ langgraph/data/
 Thumbs.db
 
 # 调试与测试
+log
 *.pdb
 **/mutants.out*/
 coverage/
+coverage.lcov
 *.profraw
 *.profdata
