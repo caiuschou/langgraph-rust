@@ -27,7 +27,6 @@
 //! ```
 
 mod config;
-mod middleware;
 mod run;
 
 pub use config::{Error, MemoryConfig, RunConfig, RunOptions, ToolSourceConfig};

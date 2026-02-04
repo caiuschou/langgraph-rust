@@ -2,7 +2,8 @@
 //!
 //! Uses [`langgraph::build_react_run_context`](langgraph::build_react_run_context) to build
 //! checkpointer, store, runnable_config and tool_source from config; then builds LLM and calls
-//! [`run_react_graph`](super::common::run_react_graph).
+//! [`langgraph::run_react_graph`](langgraph::run_react_graph) or
+//! [`langgraph::run_react_graph_stream`](langgraph::run_react_graph_stream).
 //!
 //! See docs/rust-langgraph/tools-refactor/architecture/common-interface-mcp.md.
 
@@ -11,7 +12,6 @@ use langgraph::ChatOpenAI;
 
 use crate::config::RunConfig;
 
-use super::common::{run_react_graph, run_react_graph_stream};
 use super::Error;
 
 /// Run ReAct graph with given config; does not read .env, returns final state.
@@ -43,7 +43,8 @@ pub async fn run_with_config(
     let llm: Box<dyn langgraph::LlmClient> = Box::new(llm);
 
     if config.stream {
-        run_react_graph_stream(
+        let mut last_tool_calls: Vec<langgraph::ToolCall> = vec![];
+        langgraph::run_react_graph_stream(
             user_message,
             llm,
             ctx.tool_source,
@@ -51,10 +52,45 @@ pub async fn run_with_config(
             ctx.store,
             ctx.runnable_config,
             config.verbose,
+            Some(|event: langgraph::StreamEvent<langgraph::ReActState>| {
+                use langgraph::StreamEvent;
+                use std::io::Write;
+                match &event {
+                    StreamEvent::TaskStart { node_id } => {
+                        if node_id == "think" {
+                            let _ = writeln!(std::io::stdout(), "Thinking...");
+                            let _ = std::io::stdout().flush();
+                        } else if node_id == "act" {
+                            let name = last_tool_calls
+                                .first()
+                                .map(|tc| tc.name.as_str())
+                                .unwrap_or("...");
+                            let _ = writeln!(std::io::stdout());
+                            let _ = writeln!(std::io::stdout(), "[Calling tool: {}]", name);
+                            let _ = std::io::stdout().flush();
+                        }
+                    }
+                    StreamEvent::TaskEnd { node_id, .. } => {
+                        if node_id == "act" {
+                            let _ = writeln!(std::io::stdout(), "[Tool result received]");
+                            let _ = std::io::stdout().flush();
+                        }
+                    }
+                    StreamEvent::Messages { chunk, .. } => {
+                        let _ = write!(std::io::stdout(), "{}", chunk.content);
+                        let _ = std::io::stdout().flush();
+                    }
+                    StreamEvent::Updates { state, .. } => {
+                        last_tool_calls = state.tool_calls.clone();
+                    }
+                    _ => {}
+                }
+            }),
         )
         .await
+        .map_err(|e| Box::new(e) as Error)
     } else {
-        run_react_graph(
+        langgraph::run_react_graph(
             user_message,
             llm,
             ctx.tool_source,
@@ -64,5 +100,6 @@ pub async fn run_with_config(
             config.verbose,
         )
         .await
+        .map_err(|e| Box::new(e) as Error)
     }
 }

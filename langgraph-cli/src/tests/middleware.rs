@@ -1,5 +1,5 @@
-//! Unit tests for [`LoggingMiddleware`](crate::middleware::LoggingMiddleware) and
-//! [`WithNodeLogging`](crate::middleware::WithNodeLogging).
+//! Unit tests for [`LoggingNodeMiddleware`](langgraph::LoggingNodeMiddleware) and
+//! [`WithNodeLogging`](langgraph::WithNodeLogging).
 //!
 //! Scenarios: around_run calls inner and returns the same result; with_node_logging attaches middleware.
 
@@ -7,15 +7,14 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use langgraph::{
-    AgentError, Message, NameNode, Next, NodeMiddleware, ReActState, StateGraph, END, START,
+    AgentError, LoggingNodeMiddleware, Message, NameNode, Next, NodeMiddleware, ReActState,
+    StateGraph, WithNodeLogging, END, START,
 };
 
-use crate::middleware::{LoggingMiddleware, WithNodeLogging};
-
-/// **Scenario**: LoggingMiddleware::around_run calls inner with the given state and returns inner's result.
+/// **Scenario**: LoggingNodeMiddleware::around_run calls inner with the given state and returns inner's result.
 #[tokio::test]
 async fn logging_middleware_around_run_calls_inner_and_returns_result() {
-    let m = LoggingMiddleware;
+    let m = LoggingNodeMiddleware::<ReActState>::default();
     let state = ReActState {
         messages: vec![Message::user("hi")],
         ..Default::default()
@@ -46,7 +45,7 @@ async fn logging_middleware_around_run_calls_inner_and_returns_result() {
 /// **Scenario**: When inner returns Err, around_run propagates the error.
 #[tokio::test]
 async fn logging_middleware_around_run_propagates_error() {
-    let m = LoggingMiddleware;
+    let m = LoggingNodeMiddleware::<ReActState>::default();
     let state = ReActState::default();
     let inner = Box::new(|_s: ReActState| {
         Box::pin(async { Err(AgentError::ExecutionFailed("fail".into())) })
@@ -66,7 +65,7 @@ async fn logging_middleware_around_run_propagates_error() {
 /// **Scenario**: Multiple around_run calls (enter/exit per node) complete without panic and return inner result.
 #[tokio::test]
 async fn logging_middleware_around_run_enter_exit_twice() {
-    let m = LoggingMiddleware;
+    let m = LoggingNodeMiddleware::<ReActState>::default();
     let state0 = ReActState {
         messages: vec![Message::user("a")],
         ..Default::default()

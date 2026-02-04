@@ -1,4 +1,4 @@
-//! Unit tests for [`run_react_graph`](crate::run::common::run_react_graph).
+//! Unit tests for [`run_react_graph`](langgraph::run_react_graph).
 //!
 //! BDD-style scenarios: no checkpointer/store path, with store path, single round with tool call,
 //! empty user message, multi-turn from checkpoint. Each test documents Given/When/Then and the
@@ -7,12 +7,9 @@
 use std::sync::Arc;
 
 use langgraph::{
-    Checkpoint, CheckpointSource, Message, MemorySaver, MockLlm, MockToolSource, ReActState,
-    ToolSource, REACT_SYSTEM_PROMPT,
+    run_react_graph, Checkpoint, CheckpointSource, Checkpointer, Message, MemorySaver, MockLlm,
+    MockToolSource, ReActState, ToolSource, REACT_SYSTEM_PROMPT,
 };
-use langgraph::Checkpointer;
-
-use crate::run::run_react_graph;
 
 /// **Scenario**: When no checkpointer, no store, and no runnable_config, run_react_graph compiles
 /// without checkpointer and returns Ok with state containing system prompt, user message, and
