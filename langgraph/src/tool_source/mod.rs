@@ -2,7 +2,7 @@
 //!
 //! Design: docs/rust-langgraph/mcp-integration/implementation.md.
 //! ReAct/Agent depends on `ToolSource` instead of a concrete tool registry;
-//! implementations include `MockToolSource` (tests), `StoreToolSource`, `ShortTermMemoryToolSource`, and `McpToolSource` (feature mcp).
+//! implementations include `MockToolSource` (tests), `StoreToolSource`, `ShortTermMemoryToolSource`, `WebToolsSource`, and `McpToolSource` (feature mcp).
 //!
 //! ## Memory tools (docs/rust-langgraph/tools-refactor/overview.md)
 //!
@@ -12,12 +12,18 @@
 //!   Use only when you need to explicitly re-read or summarize last N messages; most flows can omit it.
 //!   ActNode passes `ToolCallContext` via `call_tool_with_context` so this tool receives `state.messages`.
 //! - **MemoryToolsSource**: composite of both. Use `MemoryToolsSource::new(store, namespace)` and pass to `ActNode::new(Box::new(memory_tools))` for one-line setup.
+//!
+//! ## Web tools
+//!
+//! - **WebToolsSource**: web fetching as tool (`web_fetcher`).
+//!   Use `WebToolsSource::new()` to enable HTTP GET capabilities; pass to `ActNode::new(Box::new(web_tools))`.
 
 mod context;
 mod memory_tools_source;
 mod mock;
 mod short_term_memory_tool_source;
 mod store_tool_source;
+mod web_tools_source;
 
 mod mcp;
 
@@ -28,6 +34,7 @@ pub use short_term_memory_tool_source::{ShortTermMemoryToolSource, TOOL_GET_RECE
 pub use store_tool_source::{
     StoreToolSource, TOOL_LIST_MEMORIES, TOOL_RECALL, TOOL_REMEMBER, TOOL_SEARCH_MEMORIES,
 };
+pub use web_tools_source::{WebToolsSource, TOOL_WEB_FETCHER};
 
 pub use mcp::{McpSession, McpSessionError, McpToolSource};
 

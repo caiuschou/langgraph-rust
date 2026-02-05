@@ -144,6 +144,7 @@ pub use tool_source::{
     MemoryToolsSource, MockToolSource, ShortTermMemoryToolSource, StoreToolSource, ToolCallContent,
     ToolCallContext, ToolSource, ToolSourceError, ToolSpec, TOOL_GET_RECENT_MESSAGES,
     TOOL_LIST_MEMORIES, TOOL_RECALL, TOOL_REMEMBER, TOOL_SEARCH_MEMORIES,
+    TOOL_WEB_FETCHER, WebToolsSource,
 };
 pub use tools::{register_mcp_tools, McpToolAdapter};
 pub use traits::Agent;

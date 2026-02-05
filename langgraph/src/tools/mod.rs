@@ -4,6 +4,7 @@ mod mcp_adapter;
 pub mod memory;
 mod registry;
 mod r#trait;
+pub mod web;
 
 pub use aggregate_source::AggregateToolSource;
 pub use conversation::{GetRecentMessagesTool, TOOL_GET_RECENT_MESSAGES};
@@ -13,5 +14,6 @@ pub use memory::{
 };
 pub use r#trait::Tool;
 pub use registry::{ToolRegistry, ToolRegistryLocked};
+pub use web::{WebFetcherTool, TOOL_WEB_FETCHER};
 
 pub use mcp_adapter::{register_mcp_tools, McpToolAdapter};
