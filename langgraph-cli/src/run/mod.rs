@@ -11,7 +11,9 @@ use langgraph::ReActState;
 
 use crate::config::{RunConfig, RunOptions};
 
-pub use config_summary::build_config_summary;
+/// Re-exported from `langgraph` for convenience. Works with [`RunConfig`](crate::RunConfig)
+/// which implements [`RunConfigSummarySource`](langgraph::RunConfigSummarySource).
+pub use langgraph::build_config_summary;
 pub use run_with_config::run_with_config;
 
 /// Run ReAct graph with default config (from .env), returns final state.

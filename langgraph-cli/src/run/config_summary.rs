@@ -1,61 +1,55 @@
-//! Build run config summary from [`RunConfig`](crate::config::RunConfig) for verbose output.
+//! [`RunConfigSummarySource`](langgraph::RunConfigSummarySource) impl for [`RunConfig`](crate::config::RunConfig).
 //!
-//! Used by [`run_with_config`](super::run_with_config) when `config.verbose` is true.
+//! Used by [`run_with_config`](super::run_with_config) when `config.verbose` is true:
+//! [`langgraph::build_config_summary`](langgraph::build_config_summary)(config).print_to_stderr().
 //! Memory section infers short_term/long_term/store from the same logic as
 //! [`build_react_run_context`](langgraph::build_react_run_context).
 
 use langgraph::{
-    EmbeddingConfigSummary, LlmConfigSummary, MemoryConfigSummary, RunConfigSummary,
+    EmbeddingConfigSummary, LlmConfigSummary, MemoryConfigSummary, RunConfigSummarySource,
     ToolConfigSummary,
 };
 
 use crate::config::{MemoryConfig, RunConfig};
 
-/// Builds a run config summary from the given config (LLM, memory, tools, embedding).
-///
-/// Memory short_term/long_term/store are inferred to match current
-/// `build_react_run_context` behaviour: short_term=sqlite when thread_id is set;
-/// long_term=vector and store=in_memory_vector when user_id is set and embedding
-/// is available. db_path is shown as effective value (default "memory.db").
-pub fn build_config_summary(config: &RunConfig) -> RunConfigSummary {
-    let llm = LlmConfigSummary {
-        model: config.model.clone(),
-        api_base: config.api_base.clone(),
-        temperature: config.temperature,
-        tool_choice: config
-            .tool_choice
-            .as_ref()
-            .map(|tc| format!("{:?}", tc).to_lowercase())
-            .unwrap_or_else(|| "auto".to_string()),
-    };
+impl RunConfigSummarySource for RunConfig {
+    fn llm_section(&self) -> LlmConfigSummary {
+        LlmConfigSummary {
+            model: self.model.clone(),
+            api_base: self.api_base.clone(),
+            temperature: self.temperature,
+            tool_choice: self
+                .tool_choice
+                .as_ref()
+                .map(|tc| format!("{:?}", tc).to_lowercase())
+                .unwrap_or_else(|| "auto".to_string()),
+        }
+    }
 
-    let (mode, short_term, thread_id, db_path, long_term, long_term_store) =
-        memory_summary_fields(config);
-    let memory = MemoryConfigSummary {
-        mode,
-        short_term,
-        thread_id,
-        db_path,
-        long_term,
-        long_term_store,
-    };
+    fn memory_section(&self) -> MemoryConfigSummary {
+        let (mode, short_term, thread_id, db_path, long_term, long_term_store) =
+            memory_summary_fields(self);
+        MemoryConfigSummary {
+            mode,
+            short_term,
+            thread_id,
+            db_path,
+            long_term,
+            long_term_store,
+        }
+    }
 
-    let (sources, exa_url) = tool_summary_fields(config);
-    let tools = ToolConfigSummary {
-        sources,
-        exa_url,
-    };
+    fn tools_section(&self) -> ToolConfigSummary {
+        let (sources, exa_url) = tool_summary_fields(self);
+        ToolConfigSummary { sources, exa_url }
+    }
 
-    let embedding = EmbeddingConfigSummary {
-        model: config.embedding_model().to_string(),
-        api_base: config.embedding_api_base().to_string(),
-    };
-
-    RunConfigSummary::new()
-        .with_section(Box::new(llm))
-        .with_section(Box::new(memory))
-        .with_section(Box::new(tools))
-        .with_section(Box::new(embedding))
+    fn embedding_section(&self) -> EmbeddingConfigSummary {
+        EmbeddingConfigSummary {
+            model: self.embedding_model().to_string(),
+            api_base: self.embedding_api_base().to_string(),
+        }
+    }
 }
 
 fn memory_summary_fields(

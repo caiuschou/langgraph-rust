@@ -12,7 +12,7 @@ use langgraph::ChatOpenAI;
 
 use crate::config::RunConfig;
 
-use super::build_config_summary;
+use langgraph::build_config_summary;
 use super::Error;
 
 /// Run ReAct graph with given config; does not read .env, returns final state.
