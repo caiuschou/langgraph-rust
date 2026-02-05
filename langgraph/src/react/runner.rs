@@ -250,35 +250,70 @@ impl ReactRunner {
     }
 
     /// Invokes the graph with the given user message.
+    ///
+    /// Uses the runner's built-in `runnable_config` (if any). For per-invoke config
+    /// (e.g. different thread_id or user_id per request), use [`invoke_with_config`](Self::invoke_with_config).
     pub async fn invoke(&self, user_message: &str) -> Result<ReActState, RunError> {
+        self.invoke_with_config(user_message, None).await
+    }
+
+    /// Invokes the graph with the given user message and optional per-invoke config.
+    ///
+    /// When `config` is `Some`, it is used for this invoke (checkpointer, initial state
+    /// load, and runnable_config passed to the graph). When `config` is `None`, the
+    /// runner's built-in `runnable_config` is used. Allows dynamic configuration per
+    /// request (e.g. different thread_id per conversation, user_id per user or group).
+    pub async fn invoke_with_config(
+        &self,
+        user_message: &str,
+        config: Option<RunnableConfig>,
+    ) -> Result<ReActState, RunError> {
+        let run_config = config.or_else(|| self.runnable_config.clone());
         let state = build_react_initial_state(
             user_message,
             self.checkpointer.as_deref(),
-            self.runnable_config.as_ref(),
+            run_config.as_ref(),
             self.system_prompt.as_deref(),
         )
         .await?;
-        let final_state = self.compiled.invoke(state, self.runnable_config.clone()).await?;
+        let final_state = self.compiled.invoke(state, run_config).await?;
         Ok(final_state)
     }
 
     /// Streams the graph execution; returns the final state from the last StreamEvent::Values.
     ///
-    /// Emits `StreamEvent` for TaskStart, TaskEnd, Messages, Updates, Values.
-    /// When `on_event` is provided, invokes it for each event so the caller can implement
-    /// custom UX (e.g. print "Thinking...", "Calling tool", token chunks).
+    /// Uses the runner's built-in `runnable_config`. For per-invoke config, use
+    /// [`stream_with_config`](Self::stream_with_config).
     pub async fn stream_with_callback<F>(
         &self,
         user_message: &str,
+        on_event: Option<F>,
+    ) -> Result<ReActState, RunError>
+    where
+        F: FnMut(StreamEvent<ReActState>),
+    {
+        self.stream_with_config(user_message, None, on_event).await
+    }
+
+    /// Streams the graph execution with optional per-invoke config.
+    ///
+    /// When `config` is `Some`, it is used for this run; when `None`, the runner's
+    /// `runnable_config` is used. Emits `StreamEvent` for TaskStart, TaskEnd, Messages,
+    /// Updates, Values. When `on_event` is provided, invokes it for each event.
+    pub async fn stream_with_config<F>(
+        &self,
+        user_message: &str,
+        config: Option<RunnableConfig>,
         mut on_event: Option<F>,
     ) -> Result<ReActState, RunError>
     where
         F: FnMut(StreamEvent<ReActState>),
     {
+        let run_config = config.or_else(|| self.runnable_config.clone());
         let state = build_react_initial_state(
             user_message,
             self.checkpointer.as_deref(),
-            self.runnable_config.as_ref(),
+            run_config.as_ref(),
             self.system_prompt.as_deref(),
         )
         .await?;
@@ -289,9 +324,7 @@ impl ReactRunner {
             StreamMode::Updates,
             StreamMode::Values,
         ]);
-        let mut stream = self
-            .compiled
-            .stream(state, self.runnable_config.clone(), modes);
+        let mut stream = self.compiled.stream(state, run_config, modes);
 
         let mut final_state: Option<ReActState> = None;
         while let Some(event) = stream.next().await {

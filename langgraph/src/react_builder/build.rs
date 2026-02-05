@@ -60,17 +60,15 @@ fn build_checkpointer(
     ))
 }
 
-/// Builds store when user_id is set and embedder config is available; otherwise returns None.
+/// Builds store when embedder config is available; otherwise returns None.
 /// When embedding is configured (and `in-memory-vector` + `openai` features), uses
-/// InMemoryVectorStore for semantic long-term memory. When embedding is not available,
-/// long-term memory is disabled (no store, no memory tools) per design.
+/// InMemoryVectorStore for semantic long-term memory. Long-term memory is enabled by
+/// default when embedding keys are set; namespace is derived from `user_id` at build
+/// time or per-invoke config when dynamic config is used.
 fn build_store(
     config: &ReactBuildConfig,
     _db_path: &str,
 ) -> Result<Option<Arc<dyn crate::memory::Store>>, AgentError> {
-    if config.user_id.is_none() {
-        return Ok(None);
-    }
     match build_vector_store(config) {
         Ok(store) => Ok(Some(store)),
         Err(_) => Ok(None),
@@ -159,13 +157,18 @@ async fn register_exa_mcp(
     Ok(())
 }
 
+/// Default namespace for long-term memory when no user_id is set (default-on behavior).
+const DEFAULT_MEMORY_NAMESPACE: &[&str] = &["default", "memories"];
+
 /// Builds tool source: MockToolSource when no memory and no Exa; otherwise AggregateToolSource
 /// with optional MemoryToolsSource and optional MCP Exa.
+/// Long-term memory is enabled by default when store is available; namespace is
+/// `[user_id, "memories"]` when config.user_id is set, else `["default", "memories"]`.
 async fn build_tool_source(
     config: &ReactBuildConfig,
     store: &Option<Arc<dyn crate::memory::Store>>,
 ) -> Result<Box<dyn ToolSource>, AgentError> {
-    let has_memory = config.user_id.is_some() && store.is_some();
+    let has_memory = store.is_some();
     let has_exa = config.exa_api_key.is_some();
 
     if !has_memory && !has_exa {
@@ -173,9 +176,12 @@ async fn build_tool_source(
     }
 
     let aggregate = if has_memory {
-        let user_id = config.user_id.as_ref().unwrap();
         let s = store.as_ref().unwrap();
-        let namespace = vec![user_id.clone(), "memories".to_string()];
+        let namespace: Vec<String> = config
+            .user_id
+            .as_ref()
+            .map(|u| vec![u.clone(), "memories".to_string()])
+            .unwrap_or_else(|| DEFAULT_MEMORY_NAMESPACE.iter().map(|s| (*s).to_string()).collect());
         MemoryToolsSource::new(s.clone(), namespace).await
     } else {
         AggregateToolSource::new()
