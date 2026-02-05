@@ -17,7 +17,10 @@
 //!
 //! - **WebToolsSource**: web fetching as tool (`web_fetcher`).
 //!   Use `WebToolsSource::new()` to enable HTTP GET capabilities; pass to `ActNode::new(Box::new(web_tools))`.
+//! - **BashToolsSource**: shell command execution as tool (`bash`).
+//!   Use `BashToolsSource::new()` to enable running shell commands; pass to `ActNode::new(Box::new(bash_tools))`.
 
+mod bash_tools_source;
 mod context;
 mod memory_tools_source;
 mod mock;
@@ -27,6 +30,7 @@ mod web_tools_source;
 
 mod mcp;
 
+pub use bash_tools_source::{BashToolsSource, TOOL_BASH};
 pub use context::ToolCallContext;
 pub use memory_tools_source::MemoryToolsSource;
 pub use mock::MockToolSource;

@@ -21,7 +21,7 @@
 //! - [`state`]: [`ReActState`], [`ToolCall`], [`ToolResult`] — state and tool types for ReAct.
 //! - [`llm`]: [`LlmClient`] trait, [`MockLlm`], optional [`ChatOpenAI`].
 //! - [`memory`]: Checkpointing, [`Store`], [`Checkpointer`]; optional SQLite / LanceDB.
-//! - [`tool_source`]: [`ToolSource`], [`ToolSpec`]; optional MCP ([`McpToolSource`]).
+//! - [`tool_source`]: [`ToolSource`], [`ToolSpec`]; optional MCP ([`McpToolSource`]); [`WebToolsSource`], [`BashToolsSource`].
 //! - [`traits`]: Core [`Agent`] trait — implement for custom agents.
 //! - [`message`]: [`Message`] (System / User / Assistant).
 //! - [`stream`]: [`StreamWriter`], [`StreamEvent`], streaming modes for graph runs.
@@ -141,10 +141,10 @@ pub use stream::{
 };
 pub use tool_source::McpToolSource;
 pub use tool_source::{
-    MemoryToolsSource, MockToolSource, ShortTermMemoryToolSource, StoreToolSource, ToolCallContent,
-    ToolCallContext, ToolSource, ToolSourceError, ToolSpec, TOOL_GET_RECENT_MESSAGES,
-    TOOL_LIST_MEMORIES, TOOL_RECALL, TOOL_REMEMBER, TOOL_SEARCH_MEMORIES,
+    BashToolsSource, MemoryToolsSource, MockToolSource, ShortTermMemoryToolSource, StoreToolSource,
+    ToolCallContent, ToolCallContext, ToolSource, ToolSourceError, ToolSpec, TOOL_BASH,
+    TOOL_GET_RECENT_MESSAGES, TOOL_LIST_MEMORIES, TOOL_RECALL, TOOL_REMEMBER, TOOL_SEARCH_MEMORIES,
     TOOL_WEB_FETCHER, WebToolsSource,
 };
-pub use tools::{register_mcp_tools, McpToolAdapter};
+pub use tools::{register_mcp_tools, BashTool, McpToolAdapter};
 pub use traits::Agent;

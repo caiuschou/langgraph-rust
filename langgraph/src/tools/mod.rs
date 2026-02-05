@@ -1,4 +1,5 @@
 mod aggregate_source;
+pub mod bash;
 mod conversation;
 mod mcp_adapter;
 pub mod memory;
@@ -7,6 +8,7 @@ mod r#trait;
 pub mod web;
 
 pub use aggregate_source::AggregateToolSource;
+pub use bash::{BashTool, TOOL_BASH};
 pub use conversation::{GetRecentMessagesTool, TOOL_GET_RECENT_MESSAGES};
 pub use memory::{
     ListMemoriesTool, RecallTool, RememberTool, SearchMemoriesTool, TOOL_LIST_MEMORIES,
