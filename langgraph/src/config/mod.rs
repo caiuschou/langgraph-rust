@@ -6,7 +6,7 @@
 pub mod summary;
 
 pub use summary::{
-    ConfigSection, EmbeddingConfigSummary, LlmConfigSummary, MemoryConfigSummary,
-    RunConfigSummary, ToolConfigSummary,
+    build_config_summary, ConfigSection, EmbeddingConfigSummary, LlmConfigSummary,
+    MemoryConfigSummary, RunConfigSummary, RunConfigSummarySource, ToolConfigSummary,
 };
 

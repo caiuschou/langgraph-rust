@@ -25,7 +25,7 @@
 //! - [`traits`]: Core [`Agent`] trait — implement for custom agents.
 //! - [`message`]: [`Message`] (System / User / Assistant).
 //! - [`stream`]: [`StreamWriter`], [`StreamEvent`], streaming modes for graph runs.
-//! - [`config`]: Config summaries for LLM, memory, tools (e.g. [`RunConfigSummary`]).
+//! - [`config`]: Config summaries for LLM, memory, tools (e.g. [`RunConfigSummary`], [`build_config_summary`]).
 //! - [`cache`]: [`Cache`] trait and [`InMemoryCache`] for LLM response caching.
 //! - [`channels`]: State update strategies ([`Channel`], [`LastValue`], [`Topic`], etc.).
 //! - [`managed`]: [`ManagedValue`], [`IsLastStep`] for graph state.
@@ -95,8 +95,8 @@ pub mod traits;
 
 pub use cache::{Cache, CacheError, InMemoryCache};
 pub use config::{
-    ConfigSection, EmbeddingConfigSummary, LlmConfigSummary, MemoryConfigSummary,
-    RunConfigSummary, ToolConfigSummary,
+    build_config_summary, ConfigSection, EmbeddingConfigSummary, LlmConfigSummary,
+    MemoryConfigSummary, RunConfigSummary, RunConfigSummarySource, ToolConfigSummary,
 };
 pub use channels::{
     BinaryOperatorAggregate, Channel, ChannelError, EphemeralValue, LastValue, NamedBarrierValue,

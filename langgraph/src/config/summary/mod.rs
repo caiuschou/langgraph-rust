@@ -84,3 +84,32 @@ impl Default for RunConfigSummary {
         Self::new()
     }
 }
+
+/// Source of the four config sections used to build a [`RunConfigSummary`].
+///
+/// Implement this trait for your run config type so that
+/// [`build_config_summary`] can produce a summary (e.g. for verbose logging).
+/// The `langgraph-cli` crate's `RunConfig` implements this trait.
+pub trait RunConfigSummarySource: Send + Sync {
+    /// LLM section (model, api_base, temperature, tool_choice).
+    fn llm_section(&self) -> LlmConfigSummary;
+    /// Memory section (mode, short_term, long_term, store).
+    fn memory_section(&self) -> MemoryConfigSummary;
+    /// Tools section (sources, exa_url).
+    fn tools_section(&self) -> ToolConfigSummary;
+    /// Embedding section (model, api_base).
+    fn embedding_section(&self) -> EmbeddingConfigSummary;
+}
+
+/// Builds a run config summary from any source that implements [`RunConfigSummarySource`].
+///
+/// Call [`RunConfigSummary::print_to_stderr`] on the result to print the summary
+/// (e.g. when `--verbose` is set). Used by the CLI and by other crates that have
+/// a config type implementing the trait.
+pub fn build_config_summary(source: &impl RunConfigSummarySource) -> RunConfigSummary {
+    RunConfigSummary::new()
+        .with_section(Box::new(source.llm_section()))
+        .with_section(Box::new(source.memory_section()))
+        .with_section(Box::new(source.tools_section()))
+        .with_section(Box::new(source.embedding_section()))
+}
