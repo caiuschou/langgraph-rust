@@ -8,11 +8,11 @@ use std::sync::Arc;
 
 use axum::{
     body::{to_bytes, Body},
-    extract::State,
-    http::Request,
+    extract::{Path, State},
+    http::{Request, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
-    routing::post,
+    routing::{get, post},
     Json, Router,
 };
 use bytes::Bytes;
@@ -25,6 +25,14 @@ use tokio_stream::{StreamExt, wrappers::ReceiverStream};
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing::{info, info_span};
+
+/// Shared state for all routes: runner for chat completions, and config for /v1/models proxy.
+struct AppState {
+    runner: Arc<ReactRunner>,
+    openai_base_url: Option<String>,
+    openai_api_key: String,
+    http_client: reqwest::Client,
+}
 
 /// Max request body size to buffer for logging (bytes). Requests larger than this return 413.
 const LOG_BODY_LIMIT: usize = 2 * 1024 * 1024;
@@ -241,8 +249,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         false,
     )?;
 
-    let state = Arc::new(runner);
+    let http_client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let state = Arc::new(AppState {
+        runner: Arc::new(runner),
+        openai_base_url: build_config.openai_base_url.clone(),
+        openai_api_key: build_config.openai_api_key.clone().unwrap_or_default(),
+        http_client,
+    });
     let app = Router::new()
+        .route("/v1/models", get(models_list))
+        .route("/v1/models/:model_id", get(model_retrieve))
         .route("/v1/chat/completions", post(chat_completions))
         .layer(middleware::from_fn(log_request_body))
         .layer(
@@ -261,10 +280,75 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     Ok(())
 }
 
+/// Proxies GET /v1/models to the configured OpenAI-compatible base URL.
+/// Returns 503 if OPENAI_BASE_URL (or OPENAI_API_BASE) is not set.
+async fn models_list(
+    State(state): State<Arc<AppState>>,
+) -> Result<impl IntoResponse, ModelsProxyError> {
+    let base = state
+        .openai_base_url
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .ok_or(ModelsProxyError::BaseUrlNotConfigured)?;
+    // Same base as chat: base already includes /v1 (e.g. https://api.openai.com/v1), append path only.
+    let url = format!("{}/models", base.trim_end_matches('/'));
+    let res = state
+        .http_client
+        .get(&url)
+        .header(
+            "Authorization",
+            format!("Bearer {}", state.openai_api_key),
+        )
+        .send()
+        .await
+        .map_err(ModelsProxyError::Upstream)?;
+    let status = res.status();
+    let content_type = res.headers().get("content-type").cloned();
+    let body = res.bytes().await.map_err(ModelsProxyError::Upstream)?;
+    let mut response = (status, body).into_response();
+    if let Some(ct) = content_type {
+        response.headers_mut().insert("content-type", ct);
+    }
+    Ok(response)
+}
+
+/// Proxies GET /v1/models/{model_id} to the configured OpenAI-compatible base URL.
+async fn model_retrieve(
+    State(state): State<Arc<AppState>>,
+    Path(model_id): Path<String>,
+) -> Result<impl IntoResponse, ModelsProxyError> {
+    let base = state
+        .openai_base_url
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .ok_or(ModelsProxyError::BaseUrlNotConfigured)?;
+    // Same base as chat: base already includes /v1, append path only.
+    let url = format!("{}/models/{}", base.trim_end_matches('/'), model_id);
+    let res = state
+        .http_client
+        .get(&url)
+        .header(
+            "Authorization",
+            format!("Bearer {}", state.openai_api_key),
+        )
+        .send()
+        .await
+        .map_err(ModelsProxyError::Upstream)?;
+    let status = res.status();
+    let content_type = res.headers().get("content-type").cloned();
+    let body = res.bytes().await.map_err(ModelsProxyError::Upstream)?;
+    let mut response = (status, body).into_response();
+    if let Some(ct) = content_type {
+        response.headers_mut().insert("content-type", ct);
+    }
+    Ok(response)
+}
+
 async fn chat_completions(
-    State(runner): State<Arc<ReactRunner>>,
+    State(state): State<Arc<AppState>>,
     Json(req): Json<langgraph::ChatCompletionRequest>,
 ) -> Result<impl IntoResponse, ServerError> {
+    let runner = Arc::clone(&state.runner);
     if !req.stream {
         return Err(ServerError::BadRequest("only stream: true is supported".into()));
     }
@@ -288,7 +372,6 @@ async fn chat_completions(
     };
     let mut adapter = StreamToSse::new_with_sink(meta, parsed.include_usage, tx);
 
-    let runner = Arc::clone(&runner);
     let user_message = parsed.user_message.clone();
     let runnable_config = Some(parsed.runnable_config);
     tokio::spawn(async move {
@@ -317,6 +400,34 @@ async fn chat_completions(
     Ok(res)
 }
 
+/// Error when proxying /v1/models to upstream. Returns 503 if base URL is not set, 502 on upstream failure.
+#[derive(Debug, thiserror::Error)]
+pub enum ModelsProxyError {
+    #[error("OPENAI_BASE_URL or OPENAI_API_BASE must be set to proxy /v1/models")]
+    BaseUrlNotConfigured,
+    #[error("upstream request failed: {0}")]
+    Upstream(#[from] reqwest::Error),
+}
+
+impl IntoResponse for ModelsProxyError {
+    fn into_response(self) -> axum::response::Response {
+        let (status, msg) = match &self {
+            ModelsProxyError::BaseUrlNotConfigured => {
+                (StatusCode::SERVICE_UNAVAILABLE, self.to_string())
+            }
+            ModelsProxyError::Upstream(e) => {
+                let status = if e.is_timeout() {
+                    StatusCode::GATEWAY_TIMEOUT
+                } else {
+                    StatusCode::BAD_GATEWAY
+                };
+                (status, e.to_string())
+            }
+        };
+        (status, Json(serde_json::json!({ "error": { "message": msg } }))).into_response()
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum ServerError {
     #[error("bad request: {0}")]
@@ -335,5 +446,48 @@ impl IntoResponse for ServerError {
             ServerError::NotFound(m) => (axum::http::StatusCode::NOT_FOUND, m.clone()),
         };
         (status, Json(serde_json::json!({ "error": { "message": msg } }))).into_response()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Body;
+    use axum::http::Request;
+    use langgraph::{MockLlm, MockToolSource, ReactRunner};
+    use tower::ServiceExt;
+
+    /// **Scenario**: When OPENAI_BASE_URL is not set, GET /v1/models returns 503.
+    #[tokio::test]
+    async fn models_list_returns_503_when_base_url_not_configured() {
+        let runner = ReactRunner::new(
+            Box::new(MockLlm::with_no_tool_calls("ok")),
+            Box::new(MockToolSource::get_time_example()),
+            None,
+            None,
+            None,
+            None,
+            false,
+        )
+        .expect("compile");
+        let http_client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(1))
+            .build()
+            .expect("client");
+        let state = Arc::new(AppState {
+            runner: Arc::new(runner),
+            openai_base_url: None,
+            openai_api_key: "sk-test".to_string(),
+            http_client,
+        });
+        let app = Router::new()
+            .route("/v1/models", get(models_list))
+            .route("/v1/models/:model_id", get(model_retrieve))
+            .with_state(state);
+        let res = app
+            .oneshot(Request::get("/v1/models").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 }
