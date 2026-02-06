@@ -314,14 +314,12 @@ impl Node<ReActState> for ActNode {
                 }
                 Err(e) => {
                     if let Some(error_msg) = self.handle_error(&e, &tc.name, &args) {
-                        // Error is handled - add as error result
                         tool_results.push(ToolResult {
                             call_id: tc.id.clone(),
                             name: Some(tc.name.clone()),
                             content: error_msg,
                         });
                     } else {
-                        // Error propagates
                         self.tools.set_call_context(None);
                         return Err(AgentError::ExecutionFailed(e.to_string()));
                     }

@@ -10,6 +10,14 @@
 //! streaming API (`create_stream`) and sends `MessageChunk` through the provided
 //! channel as tokens arrive. Tool calls are accumulated from stream chunks.
 //!
+//! Stream response format follows the [OpenAI Chat Completions Streaming] spec:
+//! each SSE chunk is a chat completion chunk object with `choices[]`, and we read
+//! `choices[0].delta.content` for incremental text and `choices[0].delta.tool_calls`
+//! for tool calls. When `stream_options.include_usage` is true, the last chunk may
+//! have empty `choices`; we omit `stream_options` so the request matches typical clients.
+//!
+//! [OpenAI Chat Completions Streaming]: https://platform.openai.com/docs/api-reference/chat-streaming
+//!
 //! **Interaction**: Implements `LlmClient`; used by ThinkNode like `MockLlm`.
 //! Depends on `async_openai` (feature `openai`).
 
@@ -29,7 +37,7 @@ use async_openai::{
     types::chat::{
         ChatCompletionMessageToolCalls, ChatCompletionRequestMessage,
         ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage, ChatCompletionTool,
-        ChatCompletionToolChoiceOption, ChatCompletionTools, ChatCompletionStreamOptions,
+        ChatCompletionToolChoiceOption, ChatCompletionTools,
         CreateChatCompletionRequestArgs, FunctionObject, ToolChoiceOptions,
     },
     Client,
@@ -235,10 +243,10 @@ impl LlmClient for ChatOpenAI {
         args.model(self.model.clone());
         args.messages(openai_messages);
         args.stream(true);
-        args.stream_options(ChatCompletionStreamOptions {
-            include_usage: Some(true),
-            include_obfuscation: None,
-        });
+        // Do not set stream_options so the request matches typical OpenAI clients. When
+        // stream_options.include_usage is true, the last chunk may have empty choices and
+        // usage; we already handle empty choices. Some proxies (e.g. GPTProto) return
+        // broken streams when stream_options is sent, so omit it for compatibility.
 
         if let Some(ref tools) = self.tools {
             let chat_tools: Vec<ChatCompletionTools> = tools
@@ -283,6 +291,8 @@ impl LlmClient for ChatOpenAI {
 
         // Accumulate content, tool calls, and usage from stream
         let mut full_content = String::new();
+        // Track if we sent any content chunk (avoid duplicating at end for non-incremental APIs).
+        let mut sent_any_content = false;
         // Tool calls accumulator: index -> (id, name, arguments)
         let mut tool_call_map: std::collections::HashMap<u32, (String, String, String)> =
             std::collections::HashMap::new();
@@ -307,6 +317,7 @@ impl LlmClient for ChatOpenAI {
                 if let Some(ref content) = delta.content {
                     if !content.is_empty() {
                         full_content.push_str(content);
+                        sent_any_content = true;
                         // Send chunk to channel (ignore errors if receiver dropped)
                         let _ = chunk_tx
                             .send(MessageChunk {
@@ -346,6 +357,50 @@ impl LlmClient for ChatOpenAI {
                     }
                 }
             }
+        }
+
+        // Some proxies (e.g. GPTProto) return stream chunks with empty choices[] but valid usage;
+        // non-streaming with the same request returns content. Fall back to one non-streaming call
+        // so the user gets the real reply instead of a generic fallback message.
+        let completion_tokens = stream_usage.as_ref().map(|u| u.completion_tokens).unwrap_or(0);
+        if full_content.is_empty() && tool_call_map.is_empty() && completion_tokens > 0 {
+            match self.invoke(messages).await {
+                Ok(fallback_resp) if !fallback_resp.content.is_empty() || !fallback_resp.tool_calls.is_empty() => {
+                    full_content = fallback_resp.content.clone();
+                    if !full_content.is_empty() {
+                        sent_any_content = true;
+                        let _ = chunk_tx
+                            .send(MessageChunk {
+                                content: full_content.clone(),
+                            })
+                            .await;
+                    }
+                    if stream_usage.is_none() {
+                        stream_usage = fallback_resp.usage;
+                    }
+                    // Use fallback tool_calls; we'll overwrite tool_call_map so the final collect below yields these.
+                    tool_call_map = fallback_resp
+                        .tool_calls
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, tc)| {
+                            (i as u32, (tc.id.unwrap_or_default(), tc.name, tc.arguments))
+                        })
+                        .collect();
+                }
+                Ok(_) => {}
+                Err(_) => {}
+            }
+        }
+
+        // Some APIs (e.g. proxies) send content only in the final payload, not in deltas.
+        // Send the full content as one chunk so the SSE stream still has assistant text.
+        if !sent_any_content && !full_content.is_empty() {
+            let _ = chunk_tx
+                .send(MessageChunk {
+                    content: full_content.clone(),
+                })
+                .await;
         }
 
         // Convert accumulated tool calls to our format

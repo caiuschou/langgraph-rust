@@ -99,6 +99,7 @@ fn build_vector_store(
         .as_deref()
         .or(config.openai_base_url.as_deref());
     if let Some(b) = base.filter(|s| !s.is_empty()) {
+        let b = b.trim_end_matches('/');
         openai_config = openai_config.with_api_base(b);
     }
     let embedder = OpenAIEmbedder::with_config(openai_config, model);
@@ -263,6 +264,7 @@ fn build_default_llm(config: &ReactBuildConfig) -> Result<Box<dyn LlmClient>, Bu
     let mut openai_config = OpenAIConfig::new().with_api_key(api_key);
     if let Some(ref base) = config.openai_base_url {
         if !base.is_empty() {
+            let base = base.trim_end_matches('/');
             openai_config = openai_config.with_api_base(base);
         }
     }

@@ -114,8 +114,32 @@ impl Node<ReActState> for ThinkNode {
             self.llm.invoke(&state.messages).await?
         };
 
+        // When the model returns no content and no tool calls, still push a fallback reply
+        // so the user sees a response (e.g. some APIs return empty content in stream).
+        let used_fallback = response.content.is_empty() && response.tool_calls.is_empty();
+        let content = if used_fallback {
+            "No text response from the model. Please try again or check the API.".to_string()
+        } else {
+            response.content
+        };
+
+        // So that streaming clients see the fallback, emit it as a Messages event when streaming.
+        if used_fallback && ctx.stream_tx.is_some() {
+            let fallback_chunk = MessageChunk {
+                content: content.clone(),
+            };
+            let _ = ctx.stream_tx.as_ref().unwrap()
+                .send(StreamEvent::Messages {
+                    chunk: fallback_chunk,
+                    metadata: StreamMetadata {
+                        langgraph_node: self.id().to_string(),
+                    },
+                })
+                .await;
+        }
+
         let mut messages = state.messages;
-        messages.push(Message::Assistant(response.content));
+        messages.push(Message::Assistant(content));
         let new_state = ReActState {
             messages,
             tool_calls: response.tool_calls,
