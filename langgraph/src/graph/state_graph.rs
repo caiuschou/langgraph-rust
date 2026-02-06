@@ -1,9 +1,16 @@
-//! State graph: nodes + explicit edges (from → to).
+//! State graph: nodes + explicit edges (from → to) and optional conditional edges.
 //!
 //! Add nodes with `add_node`, define the chain with `add_edge(from, to)` using
-//! `START` and `END` for graph entry/exit, then `compile` or `compile_with_checkpointer`
-//! to get a `CompiledStateGraph`. Design: docs/rust-langgraph/11-state-graph-design.md.
+//! `START` and `END` for graph entry/exit. Use `add_conditional_edges` to route
+//! to the next node based on state (aligns with Python LangGraph). Then `compile`
+//! or `compile_with_checkpointer` to get a `CompiledStateGraph`. Design: docs/rust-langgraph/11-state-graph-design.md.
 //! Checkpointer/store: docs/rust-langgraph/16-memory-design.md.
+//!
+//! # Conditional edges
+//!
+//! From a source node, a routing function `(state) -> key` is called; the key is
+//! used as the next node id, or looked up in an optional path map. A node must have
+//! either one outgoing `add_edge` or `add_conditional_edges`, not both.
 //!
 //! # State Updates
 //!
@@ -18,6 +25,7 @@ use std::sync::Arc;
 use crate::channels::{BoxedStateUpdater, ReplaceUpdater};
 use crate::graph::compile_error::CompilationError;
 use crate::graph::compiled::CompiledStateGraph;
+use crate::graph::conditional::{ConditionalRouter, ConditionalRouterFn, NextEntry};
 use crate::graph::interrupt::InterruptHandler;
 use crate::graph::node::Node;
 use crate::graph::node_middleware::NodeMiddleware;
@@ -30,11 +38,12 @@ pub const START: &str = "__start__";
 /// Sentinel for graph exit: use as `to_id` in `add_edge(last_node_id, END)`.
 pub const END: &str = "__end__";
 
-/// State graph: nodes plus explicit edges. No conditional edges in minimal version.
+/// State graph: nodes plus explicit edges and optional conditional edges.
 ///
 /// Generic over state type `S`. Build with `add_node` / `add_edge(from, to)` (use
-/// `START` and `END` for entry/exit), then `compile()` or `compile_with_middleware()`
-/// to obtain an executable graph.
+/// `START` and `END` for entry/exit), and optionally `add_conditional_edges` for
+/// state-based routing. Then `compile()` or `compile_with_middleware()` to obtain
+/// an executable graph.
 ///
 /// **Interaction**: Accepts `Arc<dyn Node<S>>`; produces `CompiledStateGraph<S>`.
 /// Middleware can be set via `with_middleware` for fluent API or passed to `compile_with_middleware`.
@@ -44,8 +53,10 @@ pub const END: &str = "__end__";
 /// to customize how updates are merged (e.g., append to lists, aggregate values).
 pub struct StateGraph<S> {
     nodes: HashMap<String, Arc<dyn Node<S>>>,
-    /// Edges (from_id, to_id). Compiled graph derives linear execution order from these.
+    /// Edges (from_id, to_id). A node may have one outgoing edge or conditional_edges, not both.
     edges: Vec<(String, String)>,
+    /// Conditional edges: source node id -> (router, path_map). Next node is resolved from state at runtime.
+    conditional_edges: HashMap<String, ConditionalRouter<S>>,
     /// Optional long-term store; when set, compiled graph holds it for nodes (e.g. via config or node construction). See docs/rust-langgraph/16-memory-design.md §5.2.
     store: Option<Arc<dyn Store>>,
     /// Optional node middleware; when set, `compile()` uses it (fluent API). See `with_middleware`.
@@ -77,6 +88,7 @@ where
         Self {
             nodes: HashMap::new(),
             edges: Vec::new(),
+            conditional_edges: HashMap::new(),
             store: None,
             middleware: None,
             state_updater: None,
@@ -196,9 +208,53 @@ where
     ///
     /// Use `START` for graph entry and `END` for graph exit. Both ids (except
     /// START/END) must be registered via `add_node` before `compile()`.
-    /// Edges must form a single linear chain: one edge from START, one edge to END.
+    /// A node may have either one outgoing edge or `add_conditional_edges`, not both.
+    /// With conditional edges, the graph may branch; otherwise edges form a single linear chain.
     pub fn add_edge(&mut self, from_id: impl Into<String>, to_id: impl Into<String>) -> &mut Self {
         self.edges.push((from_id.into(), to_id.into()));
+        self
+    }
+
+    /// Adds conditional edges from `source` node: next node is determined by `path(state)`.
+    ///
+    /// Aligns with Python LangGraph `add_conditional_edges(source, path, path_map)`.
+    /// After the source node runs, `path` is called with the updated state; its return value
+    /// is used as the next node id, or looked up in `path_map` when provided.
+    ///
+    /// - When `path_map` is `None`, the return value of `path` is the next node id (or END).
+    /// - When `path_map` is `Some(map)`, the return value is the key; next node is
+    ///   `map[key]` if present, otherwise the key itself.
+    ///
+    /// The source node must not have an outgoing `add_edge`; it must have either
+    /// one edge or conditional edges. All path_map values (and direct keys when no map)
+    /// must be valid node ids or `END`.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use langgraph::graph::{StateGraph, END};
+    /// use std::collections::HashMap;
+    /// use std::sync::Arc;
+    ///
+    /// let mut graph = StateGraph::<MyState>::new();
+    /// graph.add_node("think", think_node);
+    /// graph.add_node("act", act_node);
+    /// graph.add_edge(START, "think");
+    /// graph.add_edge("act", END);
+    /// graph.add_conditional_edges(
+    ///     "think",
+    ///     Arc::new(|s| if s.has_tool_calls() { "tools".into() } else { END.into() }),
+    ///     Some([("tools".into(), "act".into()), (END.into(), END.into())].into_iter().collect()),
+    /// );
+    /// ```
+    pub fn add_conditional_edges(
+        &mut self,
+        source: impl Into<String>,
+        path: ConditionalRouterFn<S>,
+        path_map: Option<HashMap<String, String>>,
+    ) -> &mut Self {
+        self.conditional_edges
+            .insert(source.into(), ConditionalRouter::new(path, path_map));
         self
     }
 
@@ -254,6 +310,18 @@ where
                 return Err(CompilationError::NodeNotFound(to.clone()));
             }
         }
+        for (source, router) in &self.conditional_edges {
+            if !self.nodes.contains_key(source) {
+                return Err(CompilationError::NodeNotFound(source.clone()));
+            }
+            if let Some(ref path_map) = router.path_map {
+                for (_, target) in path_map {
+                    if target != END && !self.nodes.contains_key(target) {
+                        return Err(CompilationError::InvalidConditionalPathMap(target.clone()));
+                    }
+                }
+            }
+        }
 
         let start_edges: Vec<_> = self
             .edges
@@ -271,82 +339,85 @@ where
             }
         };
 
-        let end_edges: Vec<_> = self
-            .edges
-            .iter()
-            .filter(|(_, t)| t == END)
-            .map(|(f, _)| f.clone())
-            .collect();
-        if end_edges.len() != 1 {
+        let has_end = self.edges.iter().any(|(_, t)| t == END)
+            || self
+                .conditional_edges
+                .values()
+                .any(|r| r.path_map.as_ref().map_or(true, |m| m.values().any(|v| v == END)));
+        if !has_end {
             return Err(CompilationError::MissingEnd);
         }
-        let expected_last = end_edges.into_iter().next().unwrap();
 
-        let froms: Vec<_> = self
+        let edge_froms: HashSet<_> = self
             .edges
             .iter()
             .filter(|(f, _)| f.as_str() != START)
             .map(|(f, _)| f.clone())
             .collect();
-        let tos: Vec<_> = self
-            .edges
-            .iter()
-            .filter(|(_, t)| t.as_str() != END)
-            .map(|(_, t)| t.clone())
-            .collect();
-        let unique_froms: std::collections::HashSet<_> = froms.iter().cloned().collect();
-        let unique_tos: std::collections::HashSet<_> = tos.iter().cloned().collect();
-        if unique_froms.len() != froms.len() {
+        if edge_froms.len()
+            != self
+                .edges
+                .iter()
+                .filter(|(f, _)| f.as_str() != START)
+                .count()
+        {
             return Err(CompilationError::InvalidChain(
                 "duplicate from (branch)".into(),
             ));
         }
-        if unique_tos.len() != tos.len() {
-            return Err(CompilationError::InvalidChain(
-                "duplicate to (merge or branch)".into(),
-            ));
+        for source in self.conditional_edges.keys() {
+            if edge_froms.contains(source) {
+                return Err(CompilationError::NodeHasBothEdgeAndConditional(source.clone()));
+            }
         }
 
-        let next_map: HashMap<String, String> = self
+        let mut next_map: HashMap<String, NextEntry<S>> = self
             .edges
             .iter()
             .filter(|(f, _)| f.as_str() != START)
-            .map(|(f, t)| (f.clone(), t.clone()))
+            .map(|(f, t)| (f.clone(), NextEntry::Unconditional(t.clone())))
             .collect();
-
-        let mut edge_order = vec![first.clone()];
-        let mut current = first;
-        let mut visited = HashSet::new();
-        visited.insert(current.clone());
-        loop {
-            let next = match next_map.get(&current) {
-                Some(n) => n.clone(),
-                None => break,
-            };
-            if next == END {
-                if current != expected_last {
-                    return Err(CompilationError::InvalidChain(
-                        "chain tail does not match the single edge to END".into(),
-                    ));
-                }
-                break;
-            }
-            if visited.contains(&next) {
-                return Err(CompilationError::InvalidChain("cycle detected".into()));
-            }
-            visited.insert(next.clone());
-            edge_order.push(next.clone());
-            current = next;
+        for (source, router) in &self.conditional_edges {
+            next_map.insert(source.clone(), NextEntry::Conditional(router.clone()));
         }
 
-        // Use ReplaceUpdater as default if no custom updater is provided
+        let mut edge_order = vec![first.clone()];
+        if self.conditional_edges.is_empty() {
+            let linear_next: HashMap<String, String> = self
+                .edges
+                .iter()
+                .filter(|(f, _)| f.as_str() != START)
+                .map(|(f, t)| (f.clone(), t.clone()))
+                .collect();
+            let mut current = first.clone();
+            let mut visited = HashSet::new();
+            visited.insert(current.clone());
+            loop {
+                let next = match linear_next.get(&current) {
+                    Some(n) => n.clone(),
+                    None => break,
+                };
+                if next == END {
+                    break;
+                }
+                if visited.contains(&next) {
+                    return Err(CompilationError::InvalidChain("cycle detected".into()));
+                }
+                visited.insert(next.clone());
+                edge_order.push(next.clone());
+                current = next;
+            }
+        }
+
         let state_updater = self
             .state_updater
             .unwrap_or_else(|| Arc::new(ReplaceUpdater));
 
         Ok(CompiledStateGraph {
             nodes: self.nodes,
+            first_node_id: first,
             edge_order,
+            next_map,
             checkpointer,
             store: self.store,
             middleware,
@@ -354,5 +425,73 @@ where
             retry_policy: self.retry_policy,
             interrupt_handler: self.interrupt_handler,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    use async_trait::async_trait;
+
+    use crate::graph::Node;
+
+    #[derive(Clone, Debug)]
+    #[allow(dead_code)]
+    struct DummyState(i32);
+
+    #[derive(Clone)]
+    struct DummyNode(&'static str);
+
+    #[async_trait]
+    impl Node<DummyState> for DummyNode {
+        fn id(&self) -> &str {
+            self.0
+        }
+        async fn run(&self, state: DummyState) -> Result<(DummyState, crate::graph::Next), crate::error::AgentError> {
+            Ok((state, crate::graph::Next::Continue))
+        }
+    }
+
+    /// **Scenario**: Compile fails when a node has both an outgoing edge and conditional edges.
+    #[test]
+    fn compile_fails_when_node_has_both_edge_and_conditional() {
+        let mut graph = StateGraph::<DummyState>::new();
+        graph.add_node("a", Arc::new(DummyNode("a")));
+        graph.add_node("b", Arc::new(DummyNode("b")));
+        graph.add_edge(START, "a");
+        graph.add_edge("a", "b");
+        graph.add_edge("b", END);
+        graph.add_conditional_edges(
+            "a",
+            Arc::new(|_| "b".to_string()),
+            Some([("b".to_string(), "b".to_string())].into_iter().collect()),
+        );
+        let result = graph.compile();
+        match result {
+            Err(CompilationError::NodeHasBothEdgeAndConditional(id)) => assert_eq!(id, "a"),
+            Err(e) => panic!("expected NodeHasBothEdgeAndConditional(a), got {:?}", e),
+            Ok(_) => panic!("expected compile error"),
+        }
+    }
+
+    /// **Scenario**: Compile fails when conditional path_map references a non-existent node.
+    #[test]
+    fn compile_fails_when_conditional_path_map_has_invalid_target() {
+        let mut graph = StateGraph::<DummyState>::new();
+        graph.add_node("a", Arc::new(DummyNode("a")));
+        graph.add_edge(START, "a");
+        graph.add_conditional_edges(
+            "a",
+            Arc::new(|_| "x".to_string()),
+            Some([("x".to_string(), "nonexistent".to_string())].into_iter().collect()),
+        );
+        let result = graph.compile();
+        match result {
+            Err(CompilationError::InvalidConditionalPathMap(id)) => assert_eq!(id, "nonexistent"),
+            Err(e) => panic!("expected InvalidConditionalPathMap(nonexistent), got {:?}", e),
+            Ok(_) => panic!("expected compile error"),
+        }
     }
 }

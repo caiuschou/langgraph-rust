@@ -21,13 +21,20 @@
 //!
 //! # Routing
 //!
-//! Use [`tools_condition`] for conditional edges from the think node:
+//! Use [`tools_condition`] with [`StateGraph::add_conditional_edges`](crate::graph::StateGraph::add_conditional_edges) from the think node:
 //!
 //! ```rust,ignore
+//! use std::collections::HashMap;
+//! use std::sync::Arc;
+//!
+//! let path_map: HashMap<String, String> = [
+//!     ("tools".into(), "act".into()),
+//!     (langgraph::graph::END.into(), langgraph::graph::END.into()),
+//! ].into_iter().collect();
 //! graph.add_conditional_edges(
 //!     "think",
-//!     tools_condition,
-//!     [("tools", "act"), ("__end__", "__end__")].into(),
+//!     Arc::new(|state: &ReActState| tools_condition(state).as_str().to_string()),
+//!     Some(path_map),
 //! );
 //! ```
 
@@ -93,16 +100,21 @@ impl ToolsConditionResult {
 /// ```rust,ignore
 /// use langgraph::react::tools_condition;
 /// use langgraph::graph::StateGraph;
+/// use std::collections::HashMap;
+/// use std::sync::Arc;
 ///
 /// let mut graph = StateGraph::new();
 /// graph.add_node("think", think_node);
 /// graph.add_node("act", act_node);
 ///
-/// // Route based on whether there are tool calls
+/// let path_map: HashMap<String, String> = [
+///     ("tools".into(), "act".into()),
+///     (langgraph::graph::END.into(), langgraph::graph::END.into()),
+/// ].into_iter().collect();
 /// graph.add_conditional_edges(
 ///     "think",
-///     |state| tools_condition(state).as_str().to_string(),
-///     [("tools", "act"), ("__end__", "__end__")].into(),
+///     Arc::new(|state| tools_condition(state).as_str().to_string()),
+///     Some(path_map),
 /// );
 /// ```
 ///

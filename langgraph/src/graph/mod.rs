@@ -5,6 +5,7 @@
 
 mod compile_error;
 mod compiled;
+mod conditional;
 mod interrupt;
 mod logging;
 mod logging_middleware;
@@ -20,6 +21,7 @@ mod visualization;
 
 pub use compile_error::CompilationError;
 pub use compiled::CompiledStateGraph;
+pub use conditional::{ConditionalRouter, ConditionalRouterFn, NextEntry};
 pub use interrupt::{DefaultInterruptHandler, GraphInterrupt, Interrupt, InterruptHandler};
 pub use logging::{
     log_graph_complete, log_graph_error, log_graph_start, log_node_complete, log_node_start,

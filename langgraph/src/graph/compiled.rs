@@ -23,18 +23,24 @@ use super::logging::{
 };
 use super::node_middleware::NodeMiddleware;
 use super::retry::RetryPolicy;
-use super::{Next, Node, RunContext};
+use super::state_graph::END;
+use super::{Next, NextEntry, Node, RunContext};
 
 /// Compiled graph: immutable structure, supports invoke only.
 ///
 /// Created by `StateGraph::compile()` or `compile_with_checkpointer()`. Runs from first node;
-/// uses each node's returned `Next` to choose next node. When checkpointer is set, invoke(state, config)
-/// saves the final state for config.thread_id. When store is set (via `with_store` before compile),
-/// nodes can use it for long-term memory (e.g. namespace from config.user_id). See docs/rust-langgraph/16-memory-design.md §5.2.
+/// uses each node's returned `Next` or conditional router (when present) to choose next node.
+/// When checkpointer is set, invoke(state, config) saves the final state for config.thread_id.
+/// When store is set (via `with_store` before compile), nodes can use it for long-term memory.
 #[derive(Clone)]
 pub struct CompiledStateGraph<S> {
     pub(super) nodes: HashMap<String, Arc<dyn Node<S>>>,
+    /// First node to run (from START). Used when no next_map or for initial step.
+    pub(super) first_node_id: String,
+    /// Linear order of nodes (used for Next::Continue when no conditional). Empty when graph has conditional edges.
     pub(super) edge_order: Vec<String>,
+    /// Map from node id to how to get next: Unconditional(to_id) or Conditional(router). Used for routing after each node.
+    pub(super) next_map: HashMap<String, NextEntry<S>>,
     pub(super) checkpointer: Option<Arc<dyn Checkpointer<S>>>,
     /// Optional long-term store; set when graph was built with `with_store`. Nodes use it via config or construction. See docs/rust-langgraph/16-memory-design.md §5.2.
     pub(super) store: Option<Arc<dyn Store>>,
@@ -288,94 +294,70 @@ where
                 }
             }
 
-            match next {
-                Next::End => {
-                    if let (Some(cp), Some(cfg)) = (&self.checkpointer, config) {
-                        if cfg.thread_id.is_some() {
-                            let checkpoint =
-                                Checkpoint::from_state(state.clone(), CheckpointSource::Update, 0);
-                            let _ = cp.put(cfg, &checkpoint).await;
-                            // Emit checkpoint event if Checkpoints or Debug mode is enabled
-                            if let Some(ctx) = run_ctx {
-                                if let Some(tx) = &ctx.stream_tx {
-                                    if ctx.stream_mode.contains(&StreamMode::Checkpoints)
-                                        || ctx.stream_mode.contains(&StreamMode::Debug)
-                                    {
-                                        let checkpoint_ns = if cfg.checkpoint_ns.is_empty() {
-                                            None
-                                        } else {
-                                            Some(cfg.checkpoint_ns.clone())
-                                        };
-                                        let _ = tx
-                                            .send(StreamEvent::Checkpoint(
-                                                crate::stream::CheckpointEvent {
-                                                    checkpoint_id: checkpoint.id.clone(),
-                                                    timestamp: checkpoint.ts.clone(),
-                                                    step: checkpoint.metadata.step,
-                                                    state: state.clone(),
-                                                    thread_id: cfg.thread_id.clone(),
-                                                    checkpoint_ns,
-                                                },
-                                            ))
-                                            .await;
-                                    }
+            let next_id: Option<String> = if let Some(NextEntry::Conditional(router)) =
+                self.next_map.get(current_id)
+            {
+                Some(router.resolve_next(state))
+            } else {
+                match next {
+                    Next::End => None,
+                    Next::Node(id) => Some(id),
+                    Next::Continue => self
+                        .next_map
+                        .get(current_id)
+                        .and_then(|e| {
+                            if let NextEntry::Unconditional(id) = e {
+                                Some(id.clone())
+                            } else {
+                                None
+                            }
+                        })
+                        .or_else(|| {
+                            let pos = self.edge_order.iter().position(|x| x == current_id)?;
+                            self.edge_order.get(pos + 1).cloned()
+                        }),
+                }
+            };
+
+            let should_end = next_id.is_none() || next_id.as_deref() == Some(END);
+            if should_end {
+                if let (Some(cp), Some(cfg)) = (&self.checkpointer, config) {
+                    if cfg.thread_id.is_some() {
+                        let checkpoint =
+                            Checkpoint::from_state(state.clone(), CheckpointSource::Update, 0);
+                        let _ = cp.put(cfg, &checkpoint).await;
+                        if let Some(ctx) = run_ctx {
+                            if let Some(tx) = &ctx.stream_tx {
+                                if ctx.stream_mode.contains(&StreamMode::Checkpoints)
+                                    || ctx.stream_mode.contains(&StreamMode::Debug)
+                                {
+                                    let checkpoint_ns = if cfg.checkpoint_ns.is_empty() {
+                                        None
+                                    } else {
+                                        Some(cfg.checkpoint_ns.clone())
+                                    };
+                                    let _ = tx
+                                        .send(StreamEvent::Checkpoint(
+                                            crate::stream::CheckpointEvent {
+                                                checkpoint_id: checkpoint.id.clone(),
+                                                timestamp: checkpoint.ts.clone(),
+                                                step: checkpoint.metadata.step,
+                                                state: state.clone(),
+                                                thread_id: cfg.thread_id.clone(),
+                                                checkpoint_ns,
+                                            },
+                                        ))
+                                        .await;
                                 }
                             }
                         }
                     }
-                    log_graph_complete();
-                    return Ok(());
                 }
-                Next::Node(id) => *current_id = id,
-                Next::Continue => {
-                    let pos = self
-                        .edge_order
-                        .iter()
-                        .position(|x| x == current_id)
-                        .expect("current node in edge_order");
-                    let next_pos = pos + 1;
-                    if next_pos >= self.edge_order.len() {
-                        if let (Some(cp), Some(cfg)) = (&self.checkpointer, config) {
-                            if cfg.thread_id.is_some() {
-                                let checkpoint = Checkpoint::from_state(
-                                    state.clone(),
-                                    CheckpointSource::Update,
-                                    0,
-                                );
-                                let _ = cp.put(cfg, &checkpoint).await;
-                                // Emit checkpoint event if Checkpoints or Debug mode is enabled
-                                if let Some(ctx) = run_ctx {
-                                    if let Some(tx) = &ctx.stream_tx {
-                                        if ctx.stream_mode.contains(&StreamMode::Checkpoints)
-                                            || ctx.stream_mode.contains(&StreamMode::Debug)
-                                        {
-                                            let checkpoint_ns = if cfg.checkpoint_ns.is_empty() {
-                                                None
-                                            } else {
-                                                Some(cfg.checkpoint_ns.clone())
-                                            };
-                                            let _ = tx
-                                                .send(StreamEvent::Checkpoint(
-                                                    crate::stream::CheckpointEvent {
-                                                        checkpoint_id: checkpoint.id.clone(),
-                                                        timestamp: checkpoint.ts.clone(),
-                                                        step: checkpoint.metadata.step,
-                                                        state: state.clone(),
-                                                        thread_id: cfg.thread_id.clone(),
-                                                        checkpoint_ns,
-                                                    },
-                                                ))
-                                                .await;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        log_graph_complete();
-                        return Ok(());
-                    }
-                    *current_id = self.edge_order[next_pos].clone();
-                }
+                log_graph_complete();
+                return Ok(());
+            }
+            if let Some(id) = next_id {
+                *current_id = id;
             }
         }
     }
@@ -390,12 +372,11 @@ where
     /// - `Next::Node(id)`: run the node with that id next.
     /// - `Next::End`: stop and return current state.
     pub async fn invoke(&self, state: S, config: Option<RunnableConfig>) -> Result<S, AgentError> {
+        if self.nodes.is_empty() || !self.nodes.contains_key(&self.first_node_id) {
+            return Err(AgentError::ExecutionFailed("empty graph".into()));
+        }
         let mut state = state;
-        let mut current_id = self
-            .edge_order
-            .first()
-            .cloned()
-            .ok_or_else(|| AgentError::ExecutionFailed("empty graph".into()))?;
+        let mut current_id = self.first_node_id.clone();
 
         self.run_loop_inner(&mut state, &config, &mut current_id, None)
             .await?;
@@ -433,11 +414,7 @@ where
         run_ctx: RunContext<S>,
     ) -> Result<S, AgentError> {
         let mut state = state;
-        let mut current_id = self
-            .edge_order
-            .first()
-            .cloned()
-            .ok_or_else(|| AgentError::ExecutionFailed("empty graph".into()))?;
+        let mut current_id = self.first_node_id.clone();
 
         let config = Some(run_ctx.config.clone());
         self.run_loop_inner(&mut state, &config, &mut current_id, Some(&run_ctx))
@@ -501,7 +478,9 @@ mod tests {
     async fn invoke_empty_graph_returns_execution_failed() {
         let graph = CompiledStateGraph::<crate::state::ReActState> {
             nodes: HashMap::new(),
+            first_node_id: String::new(),
             edge_order: vec![],
+            next_map: HashMap::new(),
             checkpointer: None,
             store: None,
             middleware: None,
@@ -598,6 +577,54 @@ mod tests {
         graph.add_edge("first", "second");
         graph.add_edge("second", END);
         graph.compile().expect("graph compiles")
+    }
+
+    /// **Scenario**: Graph with conditional edges routes to the correct node based on state.
+    #[tokio::test]
+    async fn invoke_conditional_edges_routes_by_state() {
+        let mut graph = StateGraph::<i32>::new();
+        graph.add_node("decide", Arc::new(AddNode { id: "decide", delta: 0 }));
+        graph.add_node("even_node", Arc::new(AddNode { id: "even_node", delta: 10 }));
+        graph.add_node("odd_node", Arc::new(AddNode { id: "odd_node", delta: 100 }));
+        graph.add_edge(START, "decide");
+        graph.add_edge("even_node", END);
+        graph.add_edge("odd_node", END);
+        let path_map: HashMap<String, String> = [
+            ("even".to_string(), "even_node".to_string()),
+            ("odd".to_string(), "odd_node".to_string()),
+        ]
+        .into_iter()
+        .collect();
+        graph.add_conditional_edges(
+            "decide",
+            Arc::new(|s: &i32| if s % 2 == 0 { "even".into() } else { "odd".into() }),
+            Some(path_map),
+        );
+        let compiled = graph.compile().expect("graph compiles");
+        let out_even = compiled.invoke(2, None).await.unwrap();
+        assert_eq!(out_even, 12, "state 2 -> even_node -> +10");
+        let out_odd = compiled.invoke(1, None).await.unwrap();
+        assert_eq!(out_odd, 101, "state 1 -> odd_node -> +100");
+    }
+
+    /// **Scenario**: Conditional edges with no path_map use router return value as node id.
+    #[tokio::test]
+    async fn invoke_conditional_edges_no_path_map_uses_key_as_node_id() {
+        let mut graph = StateGraph::<i32>::new();
+        graph.add_node("decide", Arc::new(AddNode { id: "decide", delta: 0 }));
+        graph.add_node("go_a", Arc::new(AddNode { id: "go_a", delta: 1 }));
+        graph.add_node("go_b", Arc::new(AddNode { id: "go_b", delta: 10 }));
+        graph.add_edge(START, "decide");
+        graph.add_edge("go_a", END);
+        graph.add_edge("go_b", END);
+        graph.add_conditional_edges(
+            "decide",
+            Arc::new(|s: &i32| if *s > 0 { "go_a".into() } else { "go_b".into() }),
+            None,
+        );
+        let compiled = graph.compile().expect("graph compiles");
+        assert_eq!(compiled.invoke(1, None).await.unwrap(), 2, "s>0 -> go_a -> +1");
+        assert_eq!(compiled.invoke(0, None).await.unwrap(), 10, "s<=0 -> go_b -> +10");
     }
 
     /// **Scenario**: invoke with checkpointer and config.thread_id saves checkpoint at end of run.
@@ -750,7 +777,9 @@ mod tests {
     async fn stream_empty_graph_no_panic_zero_events() {
         let graph = CompiledStateGraph::<i32> {
             nodes: HashMap::new(),
+            first_node_id: String::new(),
             edge_order: vec![],
+            next_map: HashMap::new(),
             checkpointer: None,
             store: None,
             middleware: None,

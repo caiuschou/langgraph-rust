@@ -27,6 +27,14 @@ pub enum CompilationError {
     /// Edges do not form a single linear chain (e.g. branch, cycle, disconnected).
     #[error("edges must form a single linear chain from START to END: {0}")]
     InvalidChain(String),
+
+    /// A node has both an outgoing edge and conditional edges; it must have exactly one.
+    #[error("node has both edge and conditional edges: {0}")]
+    NodeHasBothEdgeAndConditional(String),
+
+    /// A value in a conditional path_map is not a valid node id or END.
+    #[error("conditional path_map invalid target: {0}")]
+    InvalidConditionalPathMap(String),
 }
 
 #[cfg(test)]
