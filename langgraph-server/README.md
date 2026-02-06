@@ -20,12 +20,36 @@ Chat and responses are backed by the ReAct agent (langgraph). Models endpoints a
 
 `.env` is loaded at startup: first from the current working directory, then from the parent directory (so running from the repo root or from `langgraph-server/` both find a root `.env`).
 
+## Build (Docker)
+
+From the project root:
+
+```bash
+docker build -f langgraph-server/Dockerfile -t langgraph-server .
+```
+
+This produces a release binary in a slim Debian image.
+
+To extract the binary only:
+
+```bash
+docker create --name tmp langgraph-server && \
+  docker cp tmp:/usr/local/bin/langgraph-server . && \
+  docker rm tmp
+```
+
 ## Run
 
 ```bash
 export OPENAI_API_KEY=sk-...
 cargo run -p langgraph-server
 # listens on http://0.0.0.0:8123 (all interfaces)
+```
+
+With Docker:
+
+```bash
+docker run -p 8123:8123 -e OPENAI_API_KEY=sk-... langgraph-server
 ```
 
 When `LANGGRAPH_API_KEY` is set, send it in requests:
