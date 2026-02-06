@@ -30,6 +30,7 @@
 //! - [`channels`]: State update strategies ([`Channel`], [`LastValue`], [`Topic`], etc.).
 //! - [`managed`]: [`ManagedValue`], [`IsLastStep`] for graph state.
 //! - [`tools`]: [`register_mcp_tools`], [`McpToolAdapter`]; conversation and memory tools.
+//! - [`openai_sse`]: OpenAI-compatible SSE adapter ([`StreamToSse`], [`ChatCompletionChunk`], [`parse_chat_request`]).
 //!
 //! Key types are re-exported at crate root so you can `use langgraph::{Agent, StateGraph, Message, ReActState};`.
 //!
@@ -85,6 +86,7 @@ pub mod llm;
 pub mod managed;
 pub mod memory;
 pub mod message;
+pub mod openai_sse;
 pub mod react;
 pub mod react_builder;
 pub mod state;
@@ -145,6 +147,11 @@ pub use tool_source::{
     ToolCallContent, ToolCallContext, ToolSource, ToolSourceError, ToolSpec, TOOL_BASH,
     TOOL_GET_RECENT_MESSAGES, TOOL_LIST_MEMORIES, TOOL_RECALL, TOOL_REMEMBER, TOOL_SEARCH_MEMORIES,
     TOOL_WEB_FETCHER, WebToolsSource,
+};
+pub use openai_sse::{
+    parse_chat_request, ChatCompletionChunk, ChatCompletionRequest, ChatMessage, ChunkMeta,
+    ChunkUsage, DeltaToolCall, MessageContent, ParseError, ParsedChatRequest, StreamOptions,
+    StreamToSse, write_sse_line,
 };
 pub use tools::{register_mcp_tools, BashTool, McpToolAdapter};
 pub use traits::Agent;
