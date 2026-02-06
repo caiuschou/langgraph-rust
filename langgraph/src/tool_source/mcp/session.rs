@@ -166,12 +166,6 @@ impl McpSession {
 
         Ok(None)
     }
-
-    /// Closes the transport and releases resources.
-    #[allow(dead_code)]
-    pub fn close(mut self) -> Result<(), McpSessionError> {
-        self.transport.close().map_err(McpSessionError::Transport)
-    }
 }
 
 fn message_id_matches(id: &MessageId, expected: &str) -> bool {
