@@ -23,12 +23,23 @@
 use async_trait::async_trait;
 use serde_json::Value;
 use std::sync::Arc;
+use tracing::{debug, trace, warn};
 
 use crate::error::AgentError;
 use crate::graph::{Next, Node, RunContext};
 use crate::state::{ReActState, ToolResult};
 use crate::stream::{StreamEvent, StreamMode, ToolStreamWriter};
 use crate::tool_source::{ToolCallContext, ToolSource, ToolSourceError};
+
+/// Truncates a string for logging, appending "..." if longer than max_len.
+/// Used for tool result preview in tracing to avoid huge log lines.
+fn truncate_for_log(s: &str, max_len: usize) -> String {
+    if s.len() <= max_len {
+        s.to_string()
+    } else {
+        format!("{}...", s.chars().take(max_len).collect::<String>())
+    }
+}
 
 /// Default error message template for tool errors.
 pub const DEFAULT_TOOL_ERROR_TEMPLATE: &str = "Error: {error}\n Please fix your mistakes.";
@@ -199,6 +210,8 @@ impl Node<ReActState> for ActNode {
                 serde_json::from_str(&tc.arguments).unwrap_or(serde_json::json!({}))
             };
 
+            debug!(tool = %tc.name, args = ?args, "Calling tool");
+
             let result = self
                 .tools
                 .call_tool_with_context(&tc.name, args.clone(), Some(&ctx))
@@ -206,6 +219,12 @@ impl Node<ReActState> for ActNode {
 
             match result {
                 Ok(content) => {
+                    trace!(
+                        tool = %tc.name,
+                        result_len = content.text.len(),
+                        result_preview = %truncate_for_log(&content.text, 200),
+                        "Tool returned"
+                    );
                     tool_results.push(ToolResult {
                         call_id: tc.id.clone(),
                         name: Some(tc.name.clone()),
@@ -213,6 +232,7 @@ impl Node<ReActState> for ActNode {
                     });
                 }
                 Err(e) => {
+                    warn!(tool = %tc.name, error = %e, "Tool call failed");
                     if let Some(error_msg) = self.handle_error(&e, &tc.name, &args) {
                         // Error is handled - add as error result
                         tool_results.push(ToolResult {
@@ -299,6 +319,8 @@ impl Node<ReActState> for ActNode {
                 serde_json::from_str(&tc.arguments).unwrap_or(serde_json::json!({}))
             };
 
+            debug!(tool = %tc.name, args = ?args, "Calling tool");
+
             let result = self
                 .tools
                 .call_tool_with_context(&tc.name, args.clone(), Some(&ctx))
@@ -306,6 +328,12 @@ impl Node<ReActState> for ActNode {
 
             match result {
                 Ok(content) => {
+                    trace!(
+                        tool = %tc.name,
+                        result_len = content.text.len(),
+                        result_preview = %truncate_for_log(&content.text, 200),
+                        "Tool returned"
+                    );
                     tool_results.push(ToolResult {
                         call_id: tc.id.clone(),
                         name: Some(tc.name.clone()),
@@ -313,6 +341,7 @@ impl Node<ReActState> for ActNode {
                     });
                 }
                 Err(e) => {
+                    warn!(tool = %tc.name, error = %e, "Tool call failed");
                     if let Some(error_msg) = self.handle_error(&e, &tc.name, &args) {
                         tool_results.push(ToolResult {
                             call_id: tc.id.clone(),
