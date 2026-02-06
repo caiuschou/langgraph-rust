@@ -4,6 +4,7 @@ members = [
     "langgraph",
     "langgraph-examples",
     "langgraph-cli",
+    "langgraph-server",
 ]
 
 [workspace.package]
