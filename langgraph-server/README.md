@@ -11,6 +11,7 @@ Chat and responses are backed by the ReAct agent (langgraph). Models endpoints a
 
 ## Config (env)
 
+- **LANGGRAPH_API_KEY** (optional): When set, the server requires every request to include `Authorization: Bearer <LANGGRAPH_API_KEY>`. Same style as OpenAI; leave unset to allow unauthenticated access.
 - **OPENAI_API_KEY** (required): OpenAI API key.
 - **OPENAI_MODEL**: Model name (default: `gpt-4o-mini`).
 - **OPENAI_BASE_URL** or **OPENAI_API_BASE**: Optional API base URL (e.g. `https://api.openai.com` or `https://gptproto.com/v1`). Required for **GET /v1/models** and **GET /v1/models/{id}** (proxy); if unset, those endpoints return 503. If only `OPENAI_API_BASE` is set (as in many .env files), it is used.
@@ -25,6 +26,12 @@ Chat and responses are backed by the ReAct agent (langgraph). Models endpoints a
 export OPENAI_API_KEY=sk-...
 cargo run -p langgraph-server
 # listens on http://0.0.0.0:8123 (all interfaces)
+```
+
+When `LANGGRAPH_API_KEY` is set, send it in requests:
+
+```bash
+curl -H "Authorization: Bearer your-langgraph-key" http://127.0.0.1:8123/v1/models
 ```
 
 ## GET /v1/models (proxy)

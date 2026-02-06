@@ -1,6 +1,7 @@
 //! HTTP server exposing POST /v1/chat/completions with OpenAI-compatible SSE streaming.
 //!
 //! Configure via env: OPENAI_API_KEY, OPENAI_MODEL, OPENAI_BASE_URL, DB_PATH, THREAD_ID, etc.
+//! Optional LANGGRAPH_API_KEY: when set, requests must send Authorization: Bearer <key>.
 //! See langgraph's ReactBuildConfig::from_env(). Load .env with dotenv.
 
 use std::io::{self, Write};
@@ -32,10 +33,36 @@ struct AppState {
     openai_base_url: Option<String>,
     openai_api_key: String,
     http_client: reqwest::Client,
+    /// When set, requests must include `Authorization: Bearer <this key>` (OpenAI-style). From env `LANGGRAPH_API_KEY`.
+    expected_api_key: Option<String>,
 }
 
 /// Max request body size to buffer for logging (bytes). Requests larger than this return 413.
 const LOG_BODY_LIMIT: usize = 2 * 1024 * 1024;
+
+/// If `expected_api_key` is set, requires `Authorization: Bearer <key>`; otherwise returns 401.
+async fn require_auth(
+    State(state): State<Arc<AppState>>,
+    request: Request<Body>,
+    next: Next,
+) -> Result<Response, Response> {
+    let expected = match &state.expected_api_key {
+        None => return Ok(next.run(request).await),
+        Some(k) => k.as_str(),
+    };
+    let auth = request
+        .headers()
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok());
+    let token = auth.and_then(|s| s.strip_prefix("Bearer ")).map(str::trim);
+    if token != Some(expected) {
+        let body = Json(serde_json::json!({
+            "error": { "message": "Invalid or missing API key. Set Authorization: Bearer <key>." }
+        }));
+        return Ok((StatusCode::UNAUTHORIZED, body).into_response());
+    }
+    Ok(next.run(request).await)
+}
 
 /// Middleware that logs method and URI at debug, then forwards the request.
 async fn log_request_body(request: Request<Body>, next: Next) -> Result<Response, Response> {
@@ -253,16 +280,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .timeout(std::time::Duration::from_secs(15))
         .build()
         .map_err(|e| e.to_string())?;
+    let expected_api_key = std::env::var("LANGGRAPH_API_KEY").ok().filter(|s| !s.is_empty());
+    if expected_api_key.is_some() {
+        info!("request auth enabled (LANGGRAPH_API_KEY set); require Authorization: Bearer <key>");
+    }
     let state = Arc::new(AppState {
         runner: Arc::new(runner),
         openai_base_url: build_config.openai_base_url.clone(),
         openai_api_key: build_config.openai_api_key.clone().unwrap_or_default(),
         http_client,
+        expected_api_key,
     });
     let app = Router::new()
         .route("/v1/models", get(models_list))
         .route("/v1/models/:model_id", get(model_retrieve))
         .route("/v1/chat/completions", post(chat_completions))
+        .layer(middleware::from_fn_with_state(state.clone(), require_auth))
         .layer(middleware::from_fn(log_request_body))
         .layer(
             TraceLayer::new_for_http()
@@ -479,6 +512,7 @@ mod tests {
             openai_base_url: None,
             openai_api_key: "sk-test".to_string(),
             http_client,
+            expected_api_key: None,
         });
         let app = Router::new()
             .route("/v1/models", get(models_list))
