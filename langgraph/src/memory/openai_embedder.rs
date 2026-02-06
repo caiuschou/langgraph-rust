@@ -239,7 +239,11 @@ mod tests {
         let embedder = OpenAIEmbedder::new("text-embedding-3-small");
         let texts = vec!["Hello, world!", "The quick brown fox"];
 
-        let vectors = embedder.embed(&texts).unwrap();
+        // Use embed_one().await to avoid calling sync embed() (which uses block_on) inside tokio runtime.
+        let mut vectors = Vec::with_capacity(texts.len());
+        for text in &texts {
+            vectors.push(embedder.embed_one(text).await.unwrap());
+        }
 
         assert_eq!(vectors.len(), 2);
         assert_eq!(vectors[0].len(), 1536);
