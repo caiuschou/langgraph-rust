@@ -155,3 +155,22 @@ pub use openai_sse::{
 };
 pub use tools::{register_mcp_tools, BashTool, McpToolAdapter};
 pub use traits::Agent;
+
+/// When running `cargo test -p langgraph`, initializes tracing from `RUST_LOG` so that
+/// unit tests in `src/**` (e.g. `openai.rs` `mod tests`) can print logs with `--nocapture`.
+#[cfg(test)]
+mod test_logging {
+    use ctor::ctor;
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::util::SubscriberInitExt;
+    use tracing_subscriber::Layer;
+    use tracing_subscriber::EnvFilter;
+
+    #[ctor]
+    fn init() {
+        let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn"));
+        let _ = tracing_subscriber::registry()
+            .with(tracing_subscriber::fmt::layer().with_test_writer().with_filter(filter))
+            .try_init();
+    }
+}

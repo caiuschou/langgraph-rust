@@ -4,6 +4,8 @@
 //! Verifies MockLlm returns expected content and tool_calls; with_no_tool_calls
 //! returns empty tool_calls for END path.
 
+mod init_logging;
+
 use langgraph::{LlmClient, Message, MockLlm};
 
 #[tokio::test]

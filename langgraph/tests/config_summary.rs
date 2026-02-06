@@ -3,6 +3,8 @@
 //! Verifies section_name() and entries() for LlmConfigSummary, MemoryConfigSummary,
 //! ToolConfigSummary, EmbeddingConfigSummary; and RunConfigSummary builder order.
 
+mod init_logging;
+
 use langgraph::{
     ConfigSection, EmbeddingConfigSummary, LlmConfigSummary, MemoryConfigSummary,
     RunConfigSummary, ToolConfigSummary,

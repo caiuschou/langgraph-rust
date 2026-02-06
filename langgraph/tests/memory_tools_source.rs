@@ -3,6 +3,8 @@
 //! Verifies list_tools returns 5 tools; call_tool dispatches to store/short-term;
 //! set_call_context is forwarded so get_recent_messages sees context.
 
+mod init_logging;
+
 use langgraph::memory::{InMemoryStore, Store};
 use langgraph::message::Message;
 use langgraph::tool_source::{

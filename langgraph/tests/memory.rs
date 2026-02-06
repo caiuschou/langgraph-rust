@@ -1,6 +1,8 @@
 //! Unit tests for Checkpoint and MemorySaver (Checkpointer). Design: 16-memory-design.md.
 //! InMemoryStore tests live in memory_in_memory.rs.
 
+mod init_logging;
+
 use langgraph::memory::{
     Checkpoint, CheckpointMetadata, CheckpointSource, MemorySaver, RunnableConfig,
     CHECKPOINT_VERSION,

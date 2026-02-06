@@ -3,6 +3,8 @@
 //! NameNode implements `Node<S>` for any state type; run returns the same state and
 //! `Next::Continue`. These tests verify id, pass-through behaviour, and use in a chain.
 
+mod init_logging;
+
 use std::sync::Arc;
 
 use async_trait::async_trait;

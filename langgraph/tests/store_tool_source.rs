@@ -3,6 +3,8 @@
 //! Verifies list_tools returns 4 tools; remember → recall consistent; recall missing key
 //! returns not found; list_memories / search_memories behavior. See docs/rust-langgraph/tools-refactor §6.
 
+mod init_logging;
+
 use langgraph::memory::{InMemoryStore, Store};
 use langgraph::tool_source::{
     StoreToolSource, ToolSource, TOOL_LIST_MEMORIES, TOOL_RECALL, TOOL_REMEMBER,

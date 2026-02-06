@@ -5,6 +5,8 @@
 //! role+content, content deltas, then finish() yields final chunk with finish_reason "stop".
 //! **Scenario**: parse_chat_request extracts user_message, system_prompt, runnable_config from request.
 
+mod init_logging;
+
 use langgraph::{
     stream::{MessageChunk, StreamMetadata},
     parse_chat_request, ChatCompletionRequest, ChatMessage, ChunkMeta, ReActState, StreamEvent,

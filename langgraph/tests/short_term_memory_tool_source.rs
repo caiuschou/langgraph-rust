@@ -3,6 +3,8 @@
 //! Verifies: without set_call_context get_recent_messages returns []; with set_call_context
 //! returns corresponding messages; with limit returns last N. See docs/rust-langgraph/tools-refactor §6.
 
+mod init_logging;
+
 use langgraph::message::Message;
 use langgraph::tool_source::{
     ShortTermMemoryToolSource, ToolCallContext, ToolSource, TOOL_GET_RECENT_MESSAGES,

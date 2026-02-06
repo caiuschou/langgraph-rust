@@ -3,6 +3,8 @@
 //! Design: [docs/rust-langgraph/13-react-agent-design.md](https://github.com/.../13-react-agent-design.md).
 //! Tests construction, Clone, Debug, and edge cases for ReActState, ToolCall, ToolResult.
 
+mod init_logging;
+
 use langgraph::{Message, ReActState, ToolCall, ToolResult};
 
 // --- ToolCall ---

@@ -4,6 +4,8 @@
 //! Verifies list_tools() returns fixed tool list, call_tool() returns fixed text;
 //! Act can call call_tool and get result (no MCP Server).
 
+mod init_logging;
+
 use langgraph::{MockToolSource, ToolSource};
 use serde_json::json;
 

@@ -3,6 +3,8 @@
 //! These tests verify that tools can emit custom streaming events during execution
 //! via `ToolCallContext.stream_writer` or `ToolCallContext.emit_custom()`.
 
+mod init_logging;
+
 use async_trait::async_trait;
 use langgraph::stream::{StreamEvent, ToolStreamWriter};
 use langgraph::tool_source::{

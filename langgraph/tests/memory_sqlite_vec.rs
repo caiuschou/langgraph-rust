@@ -1,5 +1,7 @@
 //! Integration tests for SqliteVecStore. Run with: cargo test -p langgraph --test memory_sqlite_vec
 
+mod init_logging;
+
 use langgraph::memory::{
     Embedder, SearchOptions, SqliteVecStore, Store, StoreError, StoreOp, StoreOpResult,
 };

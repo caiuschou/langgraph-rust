@@ -7,6 +7,8 @@
 //! - `store`: with_store / store()
 //! - `middleware`: compile_with_middleware and with_middleware().compile()
 
+mod init_logging;
+
 #[path = "state_graph/common.rs"]
 mod common;
 

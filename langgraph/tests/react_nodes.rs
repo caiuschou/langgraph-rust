@@ -4,6 +4,8 @@
 //! Each node is fed ReActState and we assert output state shape and content;
 //! uses MockLlm and MockToolSource.
 
+mod init_logging;
+
 use std::collections::HashSet;
 
 use langgraph::{

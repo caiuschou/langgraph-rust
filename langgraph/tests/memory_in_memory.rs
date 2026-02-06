@@ -1,6 +1,8 @@
 //! Unit tests for InMemoryStore (Store trait). No persistence; namespace isolation, put/get/list/search.
 //! Run: cargo test -p langgraph --test memory_in_memory
 
+mod init_logging;
+
 use langgraph::memory::{InMemoryStore, SearchOptions, Store};
 use serde_json::json;
 

@@ -1,5 +1,7 @@
 //! Integration tests for BashTool: name, spec, and call behavior.
 
+mod init_logging;
+
 use langgraph::tools::{BashTool, Tool, TOOL_BASH};
 use serde_json::json;
 

@@ -4,6 +4,8 @@
 //! `cargo test -p langgraph mcp_session -- --ignored` to run (ignored by default
 //! as it spawns external process).
 
+mod init_logging;
+
 use langgraph::tool_source::McpSession;
 
 #[tokio::test(flavor = "multi_thread")]

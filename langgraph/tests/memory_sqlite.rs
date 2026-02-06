@@ -1,5 +1,7 @@
 //! Integration tests for SqliteSaver and SqliteStore. Run with: cargo test -p langgraph --features sqlite --test memory_sqlite
 
+mod init_logging;
+
 use langgraph::memory::{
     Checkpoint, CheckpointMetadata, CheckpointSource, Checkpointer, JsonSerializer, RunnableConfig,
     SearchOptions, SqliteSaver, SqliteStore, Store, CHECKPOINT_VERSION,

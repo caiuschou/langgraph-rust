@@ -1,5 +1,7 @@
 //! Integration tests for BashToolsSource: list_tools and call_tool.
 
+mod init_logging;
+
 use langgraph::tool_source::{BashToolsSource, ToolSource};
 use serde_json::json;
 

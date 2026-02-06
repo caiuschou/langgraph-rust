@@ -2,6 +2,8 @@
 
 #![cfg(feature = "lance")]
 
+mod init_logging;
+
 use langgraph::memory::{Embedder, LanceStore, Store};
 use std::sync::Arc;
 

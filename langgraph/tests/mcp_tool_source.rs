@@ -2,6 +2,8 @@
 //!
 //! Run with: `cargo test -p langgraph mcp_tool_source -- --ignored`
 
+mod init_logging;
+
 use langgraph::tool_source::{McpToolSource, ToolSource};
 
 #[tokio::test(flavor = "multi_thread")]

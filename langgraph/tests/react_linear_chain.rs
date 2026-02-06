@@ -3,6 +3,8 @@
 //! Design: [docs/rust-langgraph/13-react-agent-design.md](https://github.com/.../13-react-agent-design.md) §8.4 stage 4.4.
 //! From User input to tool_results written back into messages; no real LLM/MCP.
 
+mod init_logging;
+
 use std::sync::Arc;
 
 use langgraph::{
