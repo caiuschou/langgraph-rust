@@ -24,9 +24,11 @@
 use async_trait::async_trait;
 use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
+use tracing::{debug, trace};
 
 use crate::error::AgentError;
 use crate::llm::{LlmClient, LlmResponse, LlmUsage};
+use crate::memory::uuid6;
 use crate::message::Message;
 use crate::state::ToolCall;
 use crate::stream::MessageChunk;
@@ -118,6 +120,18 @@ impl ChatOpenAI {
         self
     }
 
+    /// Returns the chat completions URL used for logging (base from OPENAI_BASE_URL or
+    /// OPENAI_API_BASE env, else default; path is /v1/chat/completions).
+    /// Note: When using custom config via with_config(), the actual base may differ;
+    /// this reflects env/default only.
+    fn chat_completions_url() -> String {
+        let base = std::env::var("OPENAI_BASE_URL")
+            .or_else(|_| std::env::var("OPENAI_API_BASE"))
+            .unwrap_or_else(|_| "https://api.openai.com".to_string());
+        let base = base.trim_end_matches('/');
+        format!("{}/v1/chat/completions", base)
+    }
+
     /// Convert our `Message` list to OpenAI request messages (system/user/assistant text only).
     fn messages_to_request(messages: &[Message]) -> Vec<ChatCompletionRequestMessage> {
         messages
@@ -140,6 +154,7 @@ impl ChatOpenAI {
 #[async_trait]
 impl LlmClient for ChatOpenAI {
     async fn invoke(&self, messages: &[Message]) -> Result<LlmResponse, AgentError> {
+        let trace_id = uuid6().to_string();
         let openai_messages = Self::messages_to_request(messages);
         let mut args = CreateChatCompletionRequestArgs::default();
         args.model(self.model.clone());
@@ -179,12 +194,36 @@ impl LlmClient for ChatOpenAI {
             AgentError::ExecutionFailed(format!("OpenAI request build failed: {}", e))
         })?;
 
+        let tools_count = self.tools.as_ref().map(|t| t.len()).unwrap_or(0);
+        let url = Self::chat_completions_url();
+        debug!(
+            trace_id = %trace_id,
+            url = %url,
+            model = %self.model,
+            message_count = messages.len(),
+            tools_count = tools_count,
+            temperature = ?self.temperature,
+            tool_choice = ?self.tool_choice,
+            "OpenAI chat create"
+        );
+        if let Ok(js) = serde_json::to_string_pretty(&request) {
+            trace!(trace_id = %trace_id, url = %url, request = %js, "OpenAI request body");
+        } else {
+            trace!(trace_id = %trace_id, url = %url, request = ?request, "OpenAI request body (debug)");
+        }
+
         let response = self
             .client
             .chat()
             .create(request)
             .await
             .map_err(|e| AgentError::ExecutionFailed(format!("OpenAI API error: {}", e)))?;
+
+        if let Ok(js) = serde_json::to_string_pretty(&response) {
+            trace!(trace_id = %trace_id, url = %url, response = %js, "OpenAI response body");
+        } else {
+            trace!(trace_id = %trace_id, url = %url, response = ?response, "OpenAI response body (debug)");
+        }
 
         let choice =
             response.choices.into_iter().next().ok_or_else(|| {
@@ -237,6 +276,7 @@ impl LlmClient for ChatOpenAI {
             return self.invoke(messages).await;
         }
 
+        let trace_id = uuid6().to_string();
         let chunk_tx = chunk_tx.unwrap();
         let openai_messages = Self::messages_to_request(messages);
         let mut args = CreateChatCompletionRequestArgs::default();
@@ -281,6 +321,25 @@ impl LlmClient for ChatOpenAI {
         let request = args.build().map_err(|e| {
             AgentError::ExecutionFailed(format!("OpenAI request build failed: {}", e))
         })?;
+
+        let tools_count = self.tools.as_ref().map(|t| t.len()).unwrap_or(0);
+        let url = Self::chat_completions_url();
+        debug!(
+            trace_id = %trace_id,
+            url = %url,
+            model = %self.model,
+            message_count = messages.len(),
+            stream = true,
+            tools_count = tools_count,
+            temperature = ?self.temperature,
+            tool_choice = ?self.tool_choice,
+            "OpenAI chat create_stream"
+        );
+        if let Ok(js) = serde_json::to_string_pretty(&request) {
+            trace!(trace_id = %trace_id, url = %url, request = %js, "OpenAI stream request body");
+        } else {
+            trace!(trace_id = %trace_id, url = %url, request = ?request, "OpenAI stream request body (debug)");
+        }
 
         let mut stream = self
             .client
@@ -416,6 +475,16 @@ impl LlmClient for ChatOpenAI {
         // Sort by name for deterministic order
         tool_calls.sort_by(|a, b| a.name.cmp(&b.name));
 
+        let url = Self::chat_completions_url();
+        trace!(
+            trace_id = %trace_id,
+            url = %url,
+            content = %full_content,
+            tool_calls = ?tool_calls,
+            usage = ?stream_usage,
+            "OpenAI stream response"
+        );
+
         Ok(LlmResponse {
             content: full_content,
             tool_calls,
@@ -427,6 +496,8 @@ impl LlmClient for ChatOpenAI {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::llm::LlmClient;
+    use crate::message::Message;
 
     /// **Scenario**: ChatOpenAI::new sets model; tools and temperature are None.
     #[test]
@@ -453,5 +524,103 @@ mod tests {
         let _ = ChatOpenAI::new("gpt-4")
             .with_tools(tools)
             .with_temperature(0.5f32);
+    }
+
+    /// **Scenario**: invoke() against an unreachable API base returns an error (no real API key needed).
+    /// Given a client configured with an invalid base URL, when we call invoke() with one user message,
+    /// then the result is Err (e.g. connection refused or timeout).
+    #[tokio::test]
+    async fn invoke_with_unreachable_base_returns_error() {
+        let config = OpenAIConfig::new()
+            .with_api_key("test-key")
+            .with_api_base("https://127.0.0.1:1");
+        let client = ChatOpenAI::with_config(config, "gpt-4o-mini");
+        let messages = [Message::user("Hello")];
+
+        let result = client.invoke(&messages).await;
+
+        assert!(result.is_err(), "invoke against unreachable base should return Err");
+    }
+
+    /// **Scenario**: invoke_stream() against an unreachable API base returns an error (no real API key needed).
+    /// Given a client configured with an invalid base URL and a channel, when we call invoke_stream()
+    /// with one user message, then the result is Err.
+    #[tokio::test]
+    async fn invoke_stream_with_unreachable_base_returns_error() {
+        let config = OpenAIConfig::new()
+            .with_api_key("test-key")
+            .with_api_base("https://127.0.0.1:1");
+        let client = ChatOpenAI::with_config(config, "gpt-4o-mini");
+        let messages = [Message::user("Hello")];
+        let (tx, _rx) = mpsc::channel(16);
+
+        let result = client.invoke_stream(&messages, Some(tx)).await;
+
+        assert!(result.is_err(), "invoke_stream against unreachable base should return Err");
+    }
+
+    /// **Scenario**: invoke_stream() with no channel delegates to invoke() and returns the same outcome.
+    /// Given a client with unreachable base, when we call invoke_stream(msgs, None), then we get the same
+    /// Err as invoke(msgs).
+    #[tokio::test]
+    async fn invoke_stream_with_none_channel_delegates_to_invoke() {
+        let config = OpenAIConfig::new()
+            .with_api_key("test-key")
+            .with_api_base("https://127.0.0.1:1");
+        let client = ChatOpenAI::with_config(config, "gpt-4o-mini");
+        let messages = [Message::user("Hi")];
+
+        let res_invoke = client.invoke(&messages).await;
+        let res_stream = client.invoke_stream(&messages, None).await;
+
+        assert!(res_invoke.is_err());
+        assert!(res_stream.is_err());
+    }
+
+    /// **Scenario**: invoke() against real OpenAI API returns Ok when OPENAI_API_KEY is set.
+    /// Given a client with default config and valid API key in env, when we call invoke() with one user message,
+    /// then the result is Ok and the response has content or tool_calls (model-dependent).
+    #[tokio::test]
+    #[ignore = "Requires OPENAI_API_KEY; run with: cargo test -p langgraph invoke_with_real_api -- --ignored"]
+    async fn invoke_with_real_api_returns_ok() {
+        std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set for this test");
+
+        let client = ChatOpenAI::new("gpt-4o-mini");
+        let messages = [Message::user("Say exactly: ok")];
+
+        let result = client.invoke(&messages).await;
+
+        let response = result.expect("invoke with real API should succeed");
+        assert!(
+            !response.content.is_empty() || !response.tool_calls.is_empty(),
+            "response should have content or tool_calls"
+        );
+    }
+
+    /// **Scenario**: invoke_stream() against real OpenAI API returns Ok and sends chunks when OPENAI_API_KEY is set.
+    /// Given a client with default config and a channel, when we call invoke_stream() with one user message,
+    /// then the result is Ok, the response content is non-empty or tool_calls present, and chunks were received.
+    #[tokio::test]
+    #[ignore = "Requires OPENAI_API_KEY; run with: cargo test -p langgraph invoke_stream_with_real_api -- --ignored"]
+    async fn invoke_stream_with_real_api_returns_ok() {
+        std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set for this test");
+
+        let client = ChatOpenAI::new("gpt-4o-mini");
+        let messages = [Message::user("Say exactly: ok")];
+        let (tx, mut rx) = mpsc::channel(16);
+
+        let result = client.invoke_stream(&messages, Some(tx)).await;
+
+        let response = result.expect("invoke_stream with real API should succeed");
+        assert!(
+            !response.content.is_empty() || !response.tool_calls.is_empty(),
+            "response should have content or tool_calls"
+        );
+
+        let mut chunks = 0u32;
+        while rx.try_recv().is_ok() {
+            chunks += 1;
+        }
+        assert!(chunks > 0, "should receive at least one stream chunk");
     }
 }
