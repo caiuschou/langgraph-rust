@@ -21,6 +21,7 @@ fn to_agent_error(e: impl std::fmt::Display) -> AgentError {
 const DEFAULT_MEMORY_NAMESPACE: &[&str] = &["default", "memories"];
 
 /// Registers MCP Exa tools on the aggregate when exa_api_key is set.
+/// Prefers HTTP when `mcp_exa_url` is http(s); otherwise uses mcp-remote (stdio).
 async fn register_exa_mcp(
     config: &ReactBuildConfig,
     aggregate: &AggregateToolSource,
@@ -29,29 +30,36 @@ async fn register_exa_mcp(
         Some(k) => k,
         None => return Ok(()),
     };
-    let args: Vec<String> = config
-        .mcp_remote_args
-        .split_whitespace()
-        .map(String::from)
-        .collect();
-    let mut args = args;
-    if !args
-        .iter()
-        .any(|a| a == &config.mcp_exa_url || a.contains("mcp.exa.ai"))
-    {
-        args.push(config.mcp_exa_url.clone());
-    }
-    let mut env = vec![("EXA_API_KEY".to_string(), key.clone())];
-    if let Ok(home) = std::env::var("HOME") {
-        env.push(("HOME".to_string(), home));
-    }
-    let mcp = McpToolSource::new_with_env(
-        config.mcp_remote_cmd.clone(),
-        args,
-        env,
-        config.mcp_verbose,
-    )
-    .map_err(to_agent_error)?;
+    let url = config.mcp_exa_url.trim();
+    let use_http = url.starts_with("http://") || url.starts_with("https://");
+
+    let mcp = if use_http {
+        McpToolSource::new_http(url, [("EXA_API_KEY", key.as_str())]).map_err(to_agent_error)?
+    } else {
+        let args: Vec<String> = config
+            .mcp_remote_args
+            .split_whitespace()
+            .map(String::from)
+            .collect();
+        let mut args = args;
+        if !args
+            .iter()
+            .any(|a| a == &config.mcp_exa_url || a.contains("mcp.exa.ai"))
+        {
+            args.push(config.mcp_exa_url.clone());
+        }
+        let mut env = vec![("EXA_API_KEY".to_string(), key.clone())];
+        if let Ok(home) = std::env::var("HOME") {
+            env.push(("HOME".to_string(), home));
+        }
+        McpToolSource::new_with_env(
+            config.mcp_remote_cmd.clone(),
+            args,
+            env,
+            config.mcp_verbose,
+        )
+        .map_err(to_agent_error)?
+    };
     register_mcp_tools(aggregate, Arc::new(mcp))
         .await
         .map_err(to_agent_error)?;
