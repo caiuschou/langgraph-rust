@@ -1,10 +1,12 @@
-//! MCP ToolSource: connects to an MCP server via stdio, implements ToolSource.
+//! MCP ToolSource: connects to an MCP server via stdio or Streamable HTTP, implements ToolSource.
 //!
 //! Design: docs/rust-langgraph/mcp-integration/mcp-tool-devplan.md.
-//! Uses `McpSession` for transport; maps MCP tools/list and tools/call to
-//! `ToolSpec` and `ToolCallContent`.
+//! Uses `McpSession` (stdio) or `McpHttpSession` (HTTP); maps MCP tools/list and
+//! tools/call to `ToolSpec` and `ToolCallContent`. For Exa, HTTP is preferred when
+//! the server URL is http(s).
 
 mod session;
+mod session_http;
 
 use std::sync::Mutex;
 
@@ -12,21 +14,30 @@ use async_trait::async_trait;
 use serde_json::Value;
 use tokio::task;
 
+use mcp_core::ResultMessage;
+
 use crate::tool_source::{ToolCallContent, ToolSource, ToolSourceError, ToolSpec};
 
 pub use session::{McpSession, McpSessionError};
+pub use session_http::McpHttpSession;
 
-/// Tool source backed by an MCP server over stdio.
+/// Transport kind: stdio (spawn process) or HTTP (POST to URL).
+enum McpSessionKind {
+    Stdio(McpSession),
+    Http(McpHttpSession),
+}
+
+/// Tool source backed by an MCP server over stdio or HTTP.
 ///
-/// Spawns the MCP server process (e.g. mcp-filesystem-server), performs
-/// initialize handshake, and implements `ToolSource` via `tools/list` and
+/// Use `new` / `new_with_env` for stdio (spawn process). Use `new_http` when the
+/// server URL is http(s) (e.g. Exa at https://mcp.exa.ai/mcp) so tools use HTTP
+/// directly without mcp-remote. Implements `ToolSource` via `tools/list` and
 /// `tools/call`. Used by ReAct's ActNode and by LLM `with_tools`.
 ///
 /// **Interaction**: Implements `ToolSource`; used by ActNode and by examples
-/// that pass tools to ChatOpenAI. Holds `McpSession` behind Mutex (feature `openai`).
-/// for interior mutability (ToolSource uses `&self`).
+/// that pass tools to ChatOpenAI. Holds session behind Mutex for interior mutability.
 pub struct McpToolSource {
-    session: Mutex<McpSession>,
+    session: Mutex<McpSessionKind>,
 }
 
 impl McpToolSource {
@@ -44,7 +55,7 @@ impl McpToolSource {
     ) -> Result<Self, McpSessionError> {
         let session = McpSession::new(command, args, None::<Vec<(String, String)>>, stderr_verbose)?;
         Ok(Self {
-            session: Mutex::new(session),
+            session: Mutex::new(McpSessionKind::Stdio(session)),
         })
     }
 
@@ -62,25 +73,52 @@ impl McpToolSource {
     ) -> Result<Self, McpSessionError> {
         let session = McpSession::new(command, args, Some(env), stderr_verbose)?;
         Ok(Self {
-            session: Mutex::new(session),
+            session: Mutex::new(McpSessionKind::Stdio(session)),
         })
+    }
+
+    /// Creates an MCP tool source over Streamable HTTP (no subprocess).
+    /// Prefer this when the server URL is http(s) (e.g. Exa at https://mcp.exa.ai/mcp).
+    /// `headers` are sent on every request (e.g. `[("EXA_API_KEY", api_key)]`).
+    ///
+    /// **Interaction**: Caller provides `url` and optional headers; used by
+    /// `register_exa_mcp` when `mcp_exa_url` starts with `http://` or `https://`.
+    pub fn new_http(
+        url: impl Into<String>,
+        headers: impl IntoIterator<Item = (impl Into<String>, impl Into<String>)>,
+    ) -> Result<Self, ToolSourceError> {
+        let session = McpHttpSession::new(url, headers)?;
+        Ok(Self {
+            session: Mutex::new(McpSessionKind::Http(session)),
+        })
+    }
+
+    /// Sends one JSON-RPC request and returns the result (stdio: optional on timeout; HTTP: always present).
+    fn request(
+        &self,
+        id: &str,
+        method: &str,
+        params: Value,
+    ) -> Result<Option<ResultMessage>, ToolSourceError> {
+        let mut kind = self
+            .session
+            .lock()
+            .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
+        match &mut *kind {
+            McpSessionKind::Stdio(s) => {
+                s.send_request(id, method, params).map_err(|e| ToolSourceError::Transport(e.to_string()))?;
+                s.wait_for_result(id, std::time::Duration::from_secs(30))
+                    .map_err(|e| ToolSourceError::Transport(e.to_string()))
+            }
+            McpSessionKind::Http(h) => h.request(id, method, params).map(Some),
+        }
     }
 
     /// Lists tools by sending `tools/list` and mapping result to `Vec<ToolSpec>`.
     fn list_tools_sync(&self) -> Result<Vec<ToolSpec>, ToolSourceError> {
-        let mut session = self
-            .session
-            .lock()
-            .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
         let id = "langgraph-tools-list";
-        session
-            .send_request(id, "tools/list", Value::Object(serde_json::Map::new()))
-            .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
-
-        let result = session
-            .wait_for_result(id, std::time::Duration::from_secs(10))
-            .map_err(|e| ToolSourceError::Transport(e.to_string()))?
-            .ok_or_else(|| ToolSourceError::Transport("timeout waiting for tools/list".into()))?;
+        let result = self.request(id, "tools/list", Value::Object(serde_json::Map::new()))?;
+        let result = result.ok_or_else(|| ToolSourceError::Transport("timeout waiting for tools/list".into()))?;
 
         if let Some(err) = result.error {
             return Err(ToolSourceError::JsonRpc(err.message));
@@ -128,19 +166,10 @@ impl McpToolSource {
         name: &str,
         arguments: Value,
     ) -> Result<ToolCallContent, ToolSourceError> {
-        let mut session = self
-            .session
-            .lock()
-            .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
         let id = format!("langgraph-call-{}", name);
         let params = serde_json::json!({ "name": name, "arguments": arguments });
-        session
-            .send_request(&id, "tools/call", params)
-            .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
-
-        let result = session
-            .wait_for_result(&id, std::time::Duration::from_secs(30))
-            .map_err(|e| ToolSourceError::Transport(e.to_string()))?
+        let result = self
+            .request(&id, "tools/call", params)?
             .ok_or_else(|| ToolSourceError::Transport("timeout waiting for tools/call".into()))?;
 
         if let Some(err) = result.error {
