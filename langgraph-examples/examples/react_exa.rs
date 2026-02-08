@@ -26,7 +26,7 @@
 //!   If you use npm Exa MCP server locally, set this and point `MCP_EXA_URL` to your server.
 //! - `MCP_EXA_URL`: Optional. Default `https://mcp.exa.ai/mcp`. Use another URL if self-hosting.
 //! - `MCP_REMOTE_CMD`: Optional. Default `npx`. Use full path if npx is not in PATH.
-//! - `MCP_REMOTE_ARGS`: Optional. Default `-y mcp-remote $MCP_EXA_URL`.
+//! - `MCP_REMOTE_ARGS`: Optional. Default `-y mcp-remote`. URL is appended if not present.
 
 use std::sync::Arc;
 

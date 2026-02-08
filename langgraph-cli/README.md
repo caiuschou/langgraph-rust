@@ -177,7 +177,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ### Using web search with Exa MCP
 
-Enable web search capabilities:
+Set `EXA_API_KEY` in `.env` (or via `--mcp-exa` which reads it from env), plus optional `MCP_EXA_URL`, `MCP_REMOTE_CMD`, `MCP_REMOTE_ARGS`. Enable web search capabilities:
 
 ```rust
 use langgraph_cli::RunConfig;

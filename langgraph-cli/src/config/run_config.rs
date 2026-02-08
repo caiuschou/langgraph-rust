@@ -221,7 +221,7 @@ impl RunConfig {
     /// `OPENAI_TEMPERATURE`, `OPENAI_TOOL_CHOICE` (auto|none|required) optional.
     /// For embeddings: `EMBEDDING_API_KEY`, `EMBEDDING_API_BASE`, `EMBEDDING_MODEL` optional.
     /// For memory: `THREAD_ID`, `USER_ID`, `DB_PATH` optional. When both `THREAD_ID` and `USER_ID` are unset, uses a generated thread_id and user_id "1" (memory mode both).
-    /// For Exa MCP: `USE_EXA_MCP`, `EXA_API_KEY`, `MCP_EXA_URL`, `MCP_REMOTE_CMD`, `MCP_REMOTE_ARGS` optional.
+    /// For Exa MCP: `EXA_API_KEY`, `MCP_EXA_URL`, `MCP_REMOTE_CMD`, `MCP_REMOTE_ARGS` optional.
     pub fn from_env() -> Result<Self, Error> {
         let api_key = std::env::var("OPENAI_API_KEY").map_err(|_| {
             std::io::Error::new(

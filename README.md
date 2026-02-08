@@ -86,6 +86,10 @@ When using the config-driven ReAct API (`ReactBuildConfig::from_env()`, `build_r
 | `DB_PATH` | SQLite path for checkpointer/store | `memory.db` at build time |
 | `REACT_SYSTEM_PROMPT` | Override default ReAct system prompt | built-in `REACT_SYSTEM_PROMPT` |
 | `EXA_API_KEY` | When set, enables Exa MCP for web search | - |
+| `MCP_EXA_URL` | Exa MCP server URL | `https://mcp.exa.ai/mcp` |
+| `MCP_REMOTE_CMD` | Command for mcp-remote (stdio→HTTP bridge) | `npx` |
+| `MCP_REMOTE_ARGS` | Args for mcp-remote | `-y mcp-remote` |
+| `MCP_VERBOSE` / `VERBOSE` | Inherit MCP subprocess stderr for debug logs | `false` |
 | `OPENAI_BASE_URL` | Used by default LLM when `build_react_runner(config, None, _)` | - |
 
 #### Using Different Providers
