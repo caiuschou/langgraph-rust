@@ -13,9 +13,10 @@ use langgraph::{
 #[derive(Clone)]
 struct MockEmbedder;
 
+#[async_trait]
 impl Embedder for MockEmbedder {
-    fn embed(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, StoreError> {
-        texts
+    async fn embed(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, StoreError> {
+        Ok(texts
             .iter()
             .map(|text| {
                 let hash = text.chars().map(|c| c as u32).sum::<u32>();
@@ -25,9 +26,9 @@ impl Embedder for MockEmbedder {
                         vec[i] = byte as f32 / 255.0;
                     }
                 }
-                Ok(vec)
+                vec
             })
-            .collect()
+            .collect())
     }
 
     fn dimension(&self) -> usize {

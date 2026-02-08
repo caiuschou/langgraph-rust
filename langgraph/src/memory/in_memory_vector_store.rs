@@ -167,7 +167,7 @@ impl Store for InMemoryVectorStore {
     ) -> Result<(), StoreError> {
         let text = Self::text_from_value(value);
 
-        let vectors = self.embedder.embed(&[&text])?;
+        let vectors = self.embedder.embed(&[&text]).await?;
         let vector = vectors
             .into_iter()
             .next()
@@ -230,7 +230,7 @@ impl Store for InMemoryVectorStore {
         // Semantic search with query
         if let Some(ref q) = options.query {
             if !q.is_empty() {
-                let vectors = self.embedder.embed(&[q])?;
+                let vectors = self.embedder.embed(&[q]).await?;
                 let query_vec = vectors
                     .into_iter()
                     .next()
@@ -397,6 +397,7 @@ impl Store for InMemoryVectorStore {
 mod tests {
     use super::*;
     use crate::memory::embedder::Embedder;
+    use async_trait::async_trait;
 
     struct MockEmbedder {
         dimension: usize,
@@ -408,8 +409,9 @@ mod tests {
         }
     }
 
+    #[async_trait]
     impl Embedder for MockEmbedder {
-        fn embed(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, StoreError> {
+        async fn embed(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, StoreError> {
             Ok(texts
                 .iter()
                 .map(|t| {

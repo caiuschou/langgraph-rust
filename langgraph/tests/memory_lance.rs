@@ -4,6 +4,7 @@
 
 mod init_logging;
 
+use async_trait::async_trait;
 use langgraph::memory::{Embedder, LanceStore, Store};
 use std::sync::Arc;
 
@@ -26,8 +27,9 @@ impl MockEmbedder {
     }
 }
 
+#[async_trait]
 impl Embedder for MockEmbedder {
-    fn embed(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, langgraph::memory::StoreError> {
+    async fn embed(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, langgraph::memory::StoreError> {
         Ok(texts.iter().map(|t| self.text_to_vec(t)).collect())
     }
 

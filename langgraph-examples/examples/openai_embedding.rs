@@ -19,7 +19,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "Hello, world!",
         "The quick brown fox jumps over the lazy dog",
     ];
-    let vectors = embedder.embed(&texts)?;
+    let texts_refs: Vec<&str> = texts.iter().map(|s| s.as_str()).collect();
+    let vectors = embedder.embed(&texts_refs).await?;
 
     for (i, (text, vector)) in texts.iter().zip(vectors.iter()).enumerate() {
         let vector_len = vector.len();

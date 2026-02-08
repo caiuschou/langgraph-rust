@@ -112,7 +112,7 @@ let config = RunConfig::from_env()?;
 let embedder = config.create_embedder();
 
 // Embed text
-let vectors = embedder.embed(&["Hello, world!"])?;
+let vectors = embedder.embed(&["Hello, world!"]).await?;
 ```
 
 ## Quick Start
@@ -836,9 +836,10 @@ use std::sync::Arc;
 
 // Custom embedder
 struct MyEmbedder;
+#[async_trait::async_trait]
 impl Embedder for MyEmbedder {
     fn dimension(&self) -> usize { 768 }
-    fn embed(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, Box<dyn std::error::Error>> {
+    async fn embed(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, langgraph::memory::StoreError> {
         // Use your embedding model (e.g., OpenAI, sentence-transformers)
         Ok(texts.iter().map(|_| vec![0.0; 768]).collect())
     }

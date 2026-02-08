@@ -27,10 +27,15 @@ use crate::memory::store::StoreError;
 /// use langgraph::memory::OpenAIEmbedder;
 ///
 /// let embedder = OpenAIEmbedder::new("text-embedding-3-small");
-/// let vectors = embedder.embed(&["Hello, world!"])?;
+/// let vectors = embedder.embed(&["Hello, world!"]).await?;
 /// ```
+///
+/// # Runtime behaviour
+///
+/// [`embed`](Embedder::embed) is async and can be awaited directly from async Store methods.
+/// Safe to use inside tokio runtime (e.g. from ReAct tools like `remember`).
 pub struct OpenAIEmbedder {
-    client: Client<OpenAIConfig>,
+    config: OpenAIConfig,
     model: String,
     dimensions: usize,
 }
@@ -59,7 +64,7 @@ impl OpenAIEmbedder {
         let model = model.into();
         let dimensions = Self::get_model_dimensions(&model);
         Self {
-            client: Client::new(),
+            config: OpenAIConfig::new(),
             model,
             dimensions,
         }
@@ -87,7 +92,7 @@ impl OpenAIEmbedder {
         let model = model.into();
         let dimensions = Self::get_model_dimensions(&model);
         Self {
-            client: Client::with_config(config),
+            config,
             model,
             dimensions,
         }
@@ -128,14 +133,14 @@ impl OpenAIEmbedder {
     /// let vector = embedder.embed_one("Hello, world!").await?;
     /// ```
     pub async fn embed_one(&self, text: &str) -> Result<Vec<f32>, StoreError> {
+        let client = Client::with_config(self.config.clone());
         let request = CreateEmbeddingRequest {
             input: EmbeddingInput::String(text.to_string()),
             model: self.model.clone(),
             ..Default::default()
         };
 
-        let response = self
-            .client
+        let response = client
             .embeddings()
             .create(request)
             .await
@@ -151,37 +156,34 @@ impl OpenAIEmbedder {
     }
 }
 
+#[async_trait::async_trait]
 impl crate::memory::Embedder for OpenAIEmbedder {
-    fn embed(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, StoreError> {
-        let runtime = tokio::runtime::Runtime::new()
-            .map_err(|e| StoreError::EmbeddingError(format!("Failed to create runtime: {}", e)))?;
+    async fn embed(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, StoreError> {
+        let inputs: Vec<String> = texts.iter().map(|&s| s.to_string()).collect();
+        let input = if inputs.len() == 1 {
+            EmbeddingInput::String(inputs[0].clone())
+        } else {
+            EmbeddingInput::StringArray(inputs)
+        };
 
-        runtime.block_on(async {
-            let inputs: Vec<String> = texts.iter().map(|&s| s.to_string()).collect();
-            let input = if inputs.len() == 1 {
-                EmbeddingInput::String(inputs[0].clone())
-            } else {
-                EmbeddingInput::StringArray(inputs)
-            };
+        let request = CreateEmbeddingRequest {
+            input,
+            model: self.model.clone(),
+            ..Default::default()
+        };
 
-            let request = CreateEmbeddingRequest {
-                input,
-                model: self.model.clone(),
-                ..Default::default()
-            };
+        let client = Client::with_config(self.config.clone());
+        let response = client
+            .embeddings()
+            .create(request)
+            .await
+            .map_err(|e| StoreError::EmbeddingError(format!("OpenAI API error: {}", e)))?;
 
-            let response = self
-                .client
-                .embeddings()
-                .create(request)
-                .await
-                .map_err(|e| StoreError::EmbeddingError(format!("OpenAI API error: {}", e)))?;
-
-            let embeddings: Vec<Vec<f32>> =
-                response.data.into_iter().map(|e| e.embedding).collect();
-
-            Ok(embeddings)
-        })
+        Ok(response
+            .data
+            .into_iter()
+            .map(|e| e.embedding)
+            .collect())
     }
 
     fn dimension(&self) -> usize {
@@ -252,5 +254,18 @@ mod tests {
         let one_vector = embedder.embed_one("Single text").await.unwrap();
 
         assert_eq!(one_vector.len(), 1536);
+    }
+
+    /// Verifies that async [`embed`](Embedder::embed) can be awaited from within a tokio runtime
+    /// (e.g. from store.put inside a ReAct tool like `remember`).
+    #[tokio::test]
+    #[ignore = "Requires OPENAI_API_KEY"]
+    async fn test_embed_from_within_tokio_runtime() {
+        std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set for this test");
+
+        let embedder = OpenAIEmbedder::new("text-embedding-3-small");
+        let vectors = embedder.embed(&["hello from tokio"]).await.unwrap();
+        assert_eq!(vectors.len(), 1);
+        assert_eq!(vectors[0].len(), 1536);
     }
 }

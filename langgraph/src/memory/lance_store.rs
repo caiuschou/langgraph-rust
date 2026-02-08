@@ -118,7 +118,7 @@ impl Store for LanceStore {
         let key = key.to_string();
         let value_str = serde_json::to_string(value)?;
         let text = text_from_value(value);
-        let vectors = self.embedder.embed(&[text.as_str()])?;
+        let vectors = self.embedder.embed(&[text.as_str()]).await?;
         let vector = vectors
             .into_iter()
             .next()
@@ -261,7 +261,7 @@ impl Store for LanceStore {
 
         if let Some(q) = query {
             if !q.is_empty() {
-                let vectors = self.embedder.embed(&[q])?;
+                let vectors = self.embedder.embed(&[q]).await?;
                 let query_vec = vectors
                     .into_iter()
                     .next()

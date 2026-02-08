@@ -2,6 +2,7 @@
 
 mod init_logging;
 
+use async_trait::async_trait;
 use langgraph::memory::{
     Embedder, SearchOptions, SqliteVecStore, Store, StoreError, StoreOp, StoreOpResult,
 };
@@ -17,8 +18,9 @@ impl MockEmbedder {
     }
 }
 
+#[async_trait]
 impl Embedder for MockEmbedder {
-    fn embed(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, StoreError> {
+    async fn embed(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, StoreError> {
         Ok(texts
             .iter()
             .map(|t| {

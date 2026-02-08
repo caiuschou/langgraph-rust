@@ -153,7 +153,7 @@ impl Store for SqliteVecStore {
         let key = key.to_string();
         let value_str = serde_json::to_string(value)?;
         let text = text_from_value(value);
-        let vectors = self.embedder.embed(&[&text])?;
+        let vectors = self.embedder.embed(&[&text]).await?;
         let vector = vectors
             .into_iter()
             .next()
@@ -360,7 +360,7 @@ impl Store for SqliteVecStore {
 
         if let Some(ref q) = query {
             if !q.is_empty() {
-                let vectors = embedder.embed(&[q])?;
+                let vectors = embedder.embed(&[q]).await?;
                 let query_vec = vectors
                     .into_iter()
                     .next()
