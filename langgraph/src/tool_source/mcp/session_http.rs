@@ -38,6 +38,71 @@ struct JsonRpcResponse {
     error: Option<JsonRpcErrorBody>,
 }
 
+/// Parses JSON-RPC response from HTTP body. Supports both application/json (single
+/// JSON object) and text/event-stream (SSE: data lines with JSON-RPC messages).
+/// Returns the first JSON-RPC response (has result or error) found in the body.
+fn parse_json_rpc_from_body(
+    body: &str,
+    content_type: Option<&reqwest::header::HeaderValue>,
+) -> Result<JsonRpcResponse, ToolSourceError> {
+    let is_sse = content_type
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.contains("text/event-stream"))
+        .unwrap_or(false);
+
+    if is_sse {
+        let mut data_buffer = String::new();
+        for line in body.lines() {
+            if let Some(data) = line.strip_prefix("data: ") {
+                if data == "[DONE]" || data.is_empty() {
+                    if !data_buffer.is_empty() {
+                        if let Ok(r) = serde_json::from_str::<JsonRpcResponse>(&data_buffer) {
+                            if r.result.is_some() || r.error.is_some() {
+                                return Ok(r);
+                            }
+                        }
+                        data_buffer.clear();
+                    }
+                    continue;
+                }
+                if data_buffer.is_empty() {
+                    data_buffer = data.to_string();
+                } else {
+                    data_buffer.push('\n');
+                    data_buffer.push_str(data);
+                }
+                if let Ok(r) = serde_json::from_str::<JsonRpcResponse>(&data_buffer) {
+                    if r.result.is_some() || r.error.is_some() {
+                        return Ok(r);
+                    }
+                }
+            } else if line.trim().is_empty() {
+                if !data_buffer.is_empty() {
+                    if let Ok(r) = serde_json::from_str::<JsonRpcResponse>(&data_buffer) {
+                        if r.result.is_some() || r.error.is_some() {
+                            return Ok(r);
+                        }
+                    }
+                    data_buffer.clear();
+                }
+            }
+        }
+        if !data_buffer.is_empty() {
+            if let Ok(r) = serde_json::from_str::<JsonRpcResponse>(&data_buffer) {
+                if r.result.is_some() || r.error.is_some() {
+                    return Ok(r);
+                }
+            }
+        }
+        Err(ToolSourceError::Transport(
+            "SSE stream: no JSON-RPC response (result/error) found".into(),
+        ))
+    } else {
+        serde_json::from_str(body)
+            .map_err(|e| ToolSourceError::Transport(format!("response json: {}", e)))
+    }
+}
+
 /// MCP session over Streamable HTTP.
 ///
 /// Performs initialize handshake via POST, then supports request/response
@@ -128,10 +193,13 @@ impl McpHttpSession {
                 if text.is_empty() { "no body" } else { &text }
             )));
         }
-        let _: JsonRpcResponse = resp
-            .json()
-            .await
-            .map_err(|e| ToolSourceError::Transport(format!("initialize response json: {}", e)))?;
+        let content_type = resp.headers().get("content-type").cloned();
+        let text = resp.text().await.map_err(|e| {
+            ToolSourceError::Transport(format!("initialize response body: {}", e))
+        })?;
+        let _: JsonRpcResponse =
+            parse_json_rpc_from_body(&text, content_type.as_ref())
+                .map_err(|e| ToolSourceError::Transport(format!("initialize {}", e)))?;
 
         let notification = NotificationMessage::new("notifications/initialized", Some(json!({})));
         let notif_body = serde_json::to_vec(&notification).map_err(|e| ToolSourceError::Transport(e.to_string()))?;
@@ -199,7 +267,14 @@ impl McpHttpSession {
                 if text.is_empty() { "no body" } else { &text }
             )));
         }
-        let json: JsonRpcResponse = resp.json().await.map_err(|e| ToolSourceError::Transport(e.to_string()))?;
+        let content_type = resp.headers().get("content-type").cloned();
+        let text = resp
+            .text()
+            .await
+            .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
+        let json: JsonRpcResponse =
+            parse_json_rpc_from_body(&text, content_type.as_ref())
+                .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
         let msg_id = json.id.unwrap_or_else(|| MessageId::from(id));
         if let Some(err) = json.error {
             let err_obj = ErrorObject::new(err.code as i32, err.message, None);
