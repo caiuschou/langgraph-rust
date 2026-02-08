@@ -8,7 +8,7 @@
 mod session;
 mod session_http;
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use serde_json::Value;
@@ -22,9 +22,10 @@ pub use session::{McpSession, McpSessionError};
 pub use session_http::McpHttpSession;
 
 /// Transport kind: stdio (spawn process) or HTTP (POST to URL).
+/// HTTP variant uses `Arc` so we can release the mutex before awaiting.
 enum McpSessionKind {
     Stdio(McpSession),
-    Http(McpHttpSession),
+    Http(Arc<McpHttpSession>),
 }
 
 /// Tool source backed by an MCP server over stdio or HTTP.
@@ -83,17 +84,17 @@ impl McpToolSource {
     ///
     /// **Interaction**: Caller provides `url` and optional headers; used by
     /// `register_exa_mcp` when `mcp_exa_url` starts with `http://` or `https://`.
-    pub fn new_http(
+    pub async fn new_http(
         url: impl Into<String>,
         headers: impl IntoIterator<Item = (impl Into<String>, impl Into<String>)>,
     ) -> Result<Self, ToolSourceError> {
-        let session = McpHttpSession::new(url, headers)?;
+        let session = McpHttpSession::new(url, headers).await?;
         Ok(Self {
-            session: Mutex::new(McpSessionKind::Http(session)),
+            session: Mutex::new(McpSessionKind::Http(Arc::new(session))),
         })
     }
 
-    /// Sends one JSON-RPC request and returns the result (stdio: optional on timeout; HTTP: always present).
+    /// Sends one JSON-RPC request and returns the result (stdio only; HTTP path uses async in `list_tools`/`call_tool`).
     fn request(
         &self,
         id: &str,
@@ -110,7 +111,7 @@ impl McpToolSource {
                 s.wait_for_result(id, std::time::Duration::from_secs(30))
                     .map_err(|e| ToolSourceError::Transport(e.to_string()))
             }
-            McpSessionKind::Http(h) => h.request(id, method, params).map(Some),
+            McpSessionKind::Http(_) => unreachable!("HTTP session uses async request path"),
         }
     }
 
@@ -119,45 +120,7 @@ impl McpToolSource {
         let id = "langgraph-tools-list";
         let result = self.request(id, "tools/list", Value::Object(serde_json::Map::new()))?;
         let result = result.ok_or_else(|| ToolSourceError::Transport("timeout waiting for tools/list".into()))?;
-
-        if let Some(err) = result.error {
-            return Err(ToolSourceError::JsonRpc(err.message));
-        }
-
-        let tools_value = result
-            .result
-            .and_then(|r| r.get("tools").cloned())
-            .ok_or_else(|| ToolSourceError::Transport("no tools in response".into()))?;
-
-        let tools_array = tools_value
-            .as_array()
-            .ok_or_else(|| ToolSourceError::Transport("tools not an array".into()))?;
-
-        let mut specs = Vec::with_capacity(tools_array.len());
-        for t in tools_array {
-            let obj = t
-                .as_object()
-                .ok_or_else(|| ToolSourceError::Transport("tool item not an object".into()))?;
-            let name = obj
-                .get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let description = obj
-                .get("description")
-                .and_then(|v| v.as_str())
-                .map(String::from);
-            let input_schema = obj
-                .get("inputSchema")
-                .cloned()
-                .unwrap_or(Value::Object(serde_json::Map::new()));
-            specs.push(ToolSpec {
-                name,
-                description,
-                input_schema,
-            });
-        }
-        Ok(specs)
+        parse_list_tools_result(result)
     }
 
     /// Calls a tool by sending `tools/call` and extracting text from content.
@@ -171,60 +134,115 @@ impl McpToolSource {
         let result = self
             .request(&id, "tools/call", params)?
             .ok_or_else(|| ToolSourceError::Transport("timeout waiting for tools/call".into()))?;
+        parse_call_tool_result(result)
+    }
+}
 
-        if let Some(err) = result.error {
-            return Err(ToolSourceError::JsonRpc(err.message));
-        }
+/// Parses a `tools/list` JSON-RPC result into `Vec<ToolSpec>`.
+fn parse_list_tools_result(result: ResultMessage) -> Result<Vec<ToolSpec>, ToolSourceError> {
+    if let Some(err) = result.error {
+        return Err(ToolSourceError::JsonRpc(err.message));
+    }
+    let tools_value = result
+        .result
+        .and_then(|r| r.get("tools").cloned())
+        .ok_or_else(|| ToolSourceError::Transport("no tools in response".into()))?;
+    let tools_array = tools_value
+        .as_array()
+        .ok_or_else(|| ToolSourceError::Transport("tools not an array".into()))?;
+    let mut specs = Vec::with_capacity(tools_array.len());
+    for t in tools_array {
+        let obj = t
+            .as_object()
+            .ok_or_else(|| ToolSourceError::Transport("tool item not an object".into()))?;
+        let name = obj
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let description = obj
+            .get("description")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        let input_schema = obj
+            .get("inputSchema")
+            .cloned()
+            .unwrap_or(Value::Object(serde_json::Map::new()));
+        specs.push(ToolSpec {
+            name,
+            description,
+            input_schema,
+        });
+    }
+    Ok(specs)
+}
 
-        let result_value = result
-            .result
-            .ok_or_else(|| ToolSourceError::Transport("no result in tools/call response".into()))?;
-
-        if result_value
-            .get("isError")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false)
-        {
-            let msg = result_value
-                .get("content")
-                .and_then(|c| c.as_array())
-                .and_then(|a| a.first())
-                .and_then(|b| b.get("text").and_then(|t| t.as_str()))
-                .unwrap_or("tool returned error")
-                .to_string();
-            return Err(ToolSourceError::Transport(msg));
-        }
-
-        let mut text_parts = Vec::new();
-        if let Some(content_array) = result_value.get("content").and_then(|c| c.as_array()) {
-            for block in content_array {
-                if block.get("type").and_then(|t| t.as_str()) == Some("text") {
-                    if let Some(t) = block.get("text").and_then(|v| v.as_str()) {
-                        text_parts.push(t);
-                    }
+/// Parses a `tools/call` JSON-RPC result into `ToolCallContent`.
+fn parse_call_tool_result(result: ResultMessage) -> Result<ToolCallContent, ToolSourceError> {
+    if let Some(err) = result.error {
+        return Err(ToolSourceError::JsonRpc(err.message));
+    }
+    let result_value = result
+        .result
+        .ok_or_else(|| ToolSourceError::Transport("no result in tools/call response".into()))?;
+    if result_value
+        .get("isError")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
+        let msg = result_value
+            .get("content")
+            .and_then(|c| c.as_array())
+            .and_then(|a| a.first())
+            .and_then(|b| b.get("text").and_then(|t| t.as_str()))
+            .unwrap_or("tool returned error")
+            .to_string();
+        return Err(ToolSourceError::Transport(msg));
+    }
+    let mut text_parts = Vec::new();
+    if let Some(content_array) = result_value.get("content").and_then(|c| c.as_array()) {
+        for block in content_array {
+            if block.get("type").and_then(|t| t.as_str()) == Some("text") {
+                if let Some(t) = block.get("text").and_then(|v| v.as_str()) {
+                    text_parts.push(t);
                 }
             }
         }
-        let mut text = text_parts.join("\n").trim().to_string();
-        if text.is_empty() {
-            if let Some(structured) = result_value.get("structuredContent") {
-                text = serde_json::to_string(structured).unwrap_or_default();
-            }
-        }
-        if text.is_empty() {
-            return Err(ToolSourceError::Transport(
-                "no text or structuredContent in tools/call response".into(),
-            ));
-        }
-
-        Ok(ToolCallContent { text })
     }
+    let mut text = text_parts.join("\n").trim().to_string();
+    if text.is_empty() {
+        if let Some(structured) = result_value.get("structuredContent") {
+            text = serde_json::to_string(structured).unwrap_or_default();
+        }
+    }
+    if text.is_empty() {
+        return Err(ToolSourceError::Transport(
+            "no text or structuredContent in tools/call response".into(),
+        ));
+    }
+    Ok(ToolCallContent { text })
 }
 
 #[async_trait]
 impl ToolSource for McpToolSource {
     async fn list_tools(&self) -> Result<Vec<ToolSpec>, ToolSourceError> {
-        task::block_in_place(|| self.list_tools_sync())
+        let arc = {
+            let guard = self
+                .session
+                .lock()
+                .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
+            match &*guard {
+                McpSessionKind::Stdio(_) => {
+                    drop(guard);
+                    return task::block_in_place(|| self.list_tools_sync());
+                }
+                McpSessionKind::Http(h) => Arc::clone(h),
+            }
+        };
+        let result = arc
+            .request("langgraph-tools-list", "tools/list", Value::Object(serde_json::Map::new()))
+            .await?;
+        parse_list_tools_result(result)
     }
 
     async fn call_tool(
@@ -232,7 +250,25 @@ impl ToolSource for McpToolSource {
         name: &str,
         arguments: Value,
     ) -> Result<ToolCallContent, ToolSourceError> {
-        task::block_in_place(|| self.call_tool_sync(name, arguments))
+        let (arc, params) = {
+            let guard = self
+                .session
+                .lock()
+                .map_err(|e| ToolSourceError::Transport(e.to_string()))?;
+            match &*guard {
+                McpSessionKind::Stdio(_) => {
+                    drop(guard);
+                    return task::block_in_place(|| self.call_tool_sync(name, arguments));
+                }
+                McpSessionKind::Http(h) => {
+                    let params = serde_json::json!({ "name": name, "arguments": arguments });
+                    (Arc::clone(h), params)
+                }
+            }
+        };
+        let id = format!("langgraph-call-{}", name);
+        let result = arc.request(&id, "tools/call", params).await?;
+        parse_call_tool_result(result)
     }
 }
 

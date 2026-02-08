@@ -7,11 +7,12 @@
 //!
 //! **Interaction**: Created by `McpToolSource::new_http`; used for `initialize`,
 //! `tools/list`, and `tools/call` when the server URL is http(s).
+//! Uses async reqwest; safe to create and use from async/tokio context.
 
 use std::sync::Mutex;
 
 use mcp_core::{ErrorObject, MessageId, NotificationMessage, RequestMessage, ResultMessage};
-use reqwest::blocking::Client;
+use reqwest::Client;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -40,8 +41,8 @@ struct JsonRpcResponse {
 /// MCP session over Streamable HTTP.
 ///
 /// Performs initialize handshake via POST, then supports request/response
-/// for tools/list and tools/call. Uses blocking reqwest; callers run in
-/// block_in_place when used from async.
+/// for tools/list and tools/call. Uses async reqwest; safe to create and drop
+/// from async/tokio context (no nested runtime).
 pub struct McpHttpSession {
     client: Client,
     url: String,
@@ -56,7 +57,7 @@ impl McpHttpSession {
     ///
     /// `url` must be the MCP endpoint (e.g. `https://mcp.exa.ai/mcp`).
     /// `headers` are added to every request (e.g. `[("EXA_API_KEY", key)]`).
-    pub fn new(
+    pub async fn new(
         url: impl Into<String>,
         headers: impl IntoIterator<Item = (impl Into<String>, impl Into<String>)>,
     ) -> Result<Self, ToolSourceError> {
@@ -76,12 +77,12 @@ impl McpHttpSession {
             headers,
             session_id,
         };
-        s.initialize()?;
+        s.initialize().await?;
         Ok(s)
     }
 
     /// Performs MCP initialize: POST initialize, capture MCP-Session-Id, POST notifications/initialized.
-    fn initialize(&mut self) -> Result<(), ToolSourceError> {
+    async fn initialize(&mut self) -> Result<(), ToolSourceError> {
         let params = json!({
             "protocolVersion": MCP_PROTOCOL_VERSION,
             "capabilities": { "tools": {} },
@@ -106,7 +107,7 @@ impl McpHttpSession {
         for (k, v) in &self.headers {
             req = req.header(k.as_str(), v.as_str());
         }
-        let resp = req.send().map_err(|e| ToolSourceError::Transport(e.to_string()))?;
+        let resp = req.send().await.map_err(|e| ToolSourceError::Transport(e.to_string()))?;
         let status = resp.status();
         let session_id = resp
             .headers()
@@ -120,7 +121,7 @@ impl McpHttpSession {
             return Ok(());
         }
         if !status.is_success() {
-            let text = resp.text().unwrap_or_default();
+            let text = resp.text().await.unwrap_or_default();
             return Err(ToolSourceError::Transport(format!(
                 "initialize HTTP {}: {}",
                 status,
@@ -129,6 +130,7 @@ impl McpHttpSession {
         }
         let _: JsonRpcResponse = resp
             .json()
+            .await
             .map_err(|e| ToolSourceError::Transport(format!("initialize response json: {}", e)))?;
 
         let notification = NotificationMessage::new("notifications/initialized", Some(json!({})));
@@ -146,10 +148,10 @@ impl McpHttpSession {
         if let Some(ref id) = *self.session_id.lock().map_err(|e| ToolSourceError::Transport(e.to_string()))? {
             req2 = req2.header("MCP-Session-Id", id.as_str());
         }
-        let resp2 = req2.send().map_err(|e| ToolSourceError::Transport(e.to_string()))?;
+        let resp2 = req2.send().await.map_err(|e| ToolSourceError::Transport(e.to_string()))?;
         let status2 = resp2.status();
         if status2 != reqwest::StatusCode::ACCEPTED && !status2.is_success() {
-            let text = resp2.text().unwrap_or_default();
+            let text = resp2.text().await.unwrap_or_default();
             return Err(ToolSourceError::Transport(format!(
                 "notifications/initialized HTTP {}: {}",
                 status2,
@@ -163,7 +165,7 @@ impl McpHttpSession {
     ///
     /// Used by McpToolSource for tools/list and tools/call. Response must be
     /// Content-Type: application/json with a single JSON-RPC response.
-    pub fn request(
+    pub async fn request(
         &self,
         id: &str,
         method: &str,
@@ -186,10 +188,10 @@ impl McpHttpSession {
                 req = req.header("MCP-Session-Id", sid.as_str());
             }
         }
-        let resp = req.send().map_err(|e| ToolSourceError::Transport(e.to_string()))?;
+        let resp = req.send().await.map_err(|e| ToolSourceError::Transport(e.to_string()))?;
         let status = resp.status();
         if !status.is_success() {
-            let text = resp.text().unwrap_or_default();
+            let text = resp.text().await.unwrap_or_default();
             return Err(ToolSourceError::Transport(format!(
                 "{} HTTP {}: {}",
                 method,
@@ -197,7 +199,7 @@ impl McpHttpSession {
                 if text.is_empty() { "no body" } else { &text }
             )));
         }
-        let json: JsonRpcResponse = resp.json().map_err(|e| ToolSourceError::Transport(e.to_string()))?;
+        let json: JsonRpcResponse = resp.json().await.map_err(|e| ToolSourceError::Transport(e.to_string()))?;
         let msg_id = json.id.unwrap_or_else(|| MessageId::from(id));
         if let Some(err) = json.error {
             let err_obj = ErrorObject::new(err.code as i32, err.message, None);

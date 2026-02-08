@@ -34,7 +34,9 @@ async fn register_exa_mcp(
     let use_http = url.starts_with("http://") || url.starts_with("https://");
 
     let mcp = if use_http {
-        McpToolSource::new_http(url, [("EXA_API_KEY", key.as_str())]).map_err(to_agent_error)?
+        McpToolSource::new_http(url, [("EXA_API_KEY", key.as_str())])
+            .await
+            .map_err(to_agent_error)?
     } else {
         let args: Vec<String> = config
             .mcp_remote_args
