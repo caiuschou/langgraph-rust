@@ -8,35 +8,51 @@
 //!
 //! - **Single state type**: Each graph uses one state struct (e.g. [`ReActState`]) that all
 //!   nodes read from and write to.
-//! - **One node per [`Agent::run`]**: Each agent implements a single step:
-//!   receive state, return updated state. No streaming or complex I/O in the core API.
-//! - **State graphs**: Compose agents into [`StateGraph`] with conditional edges. Design docs:
-//!   `docs/rust-langgraph/09-minimal-agent-design.md`, `docs/rust-langgraph/11-state-graph-design.md`.
-//!
-//! ## Main modules
-//!
-//! - [`graph`]: [`StateGraph`], [`CompiledStateGraph`], [`Node`], [`Next`] — build and run state graphs.
-//! - [`react`]: ReAct nodes ([`ThinkNode`], [`ActNode`], [`ObserveNode`]), [`run_react_graph`], [`tools_condition`].
-//! - [`react_builder`]: [`ReactBuildConfig`], [`build_react_run_context`], [`build_react_runner_with_openai`].
-//! - [`state`]: [`ReActState`], [`ToolCall`], [`ToolResult`] — state and tool types for ReAct.
-//! - [`llm`]: [`LlmClient`] trait, [`MockLlm`], optional [`ChatOpenAI`].
-//! - [`memory`]: Checkpointing, [`Store`], [`Checkpointer`]; optional SQLite / LanceDB.
-//! - [`tool_source`]: [`ToolSource`], [`ToolSpec`]; optional MCP ([`McpToolSource`]); [`WebToolsSource`], [`BashToolsSource`].
-//! - [`traits`]: Core [`Agent`] trait — implement for custom agents.
-//! - [`message`]: [`Message`] (System / User / Assistant).
-//! - [`stream`]: [`StreamWriter`], [`StreamEvent`], streaming modes for graph runs.
-//! - [`config`]: Config summaries for LLM, memory, tools (e.g. [`RunConfigSummary`], [`build_config_summary`]).
-//! - [`cache`]: [`Cache`] trait and [`InMemoryCache`] for LLM response caching.
-//! - [`channels`]: State update strategies ([`Channel`], [`LastValue`], [`Topic`], etc.).
-//! - [`managed`]: [`ManagedValue`], [`IsLastStep`] for graph state.
-//! - [`tools`]: [`register_mcp_tools`], [`McpToolAdapter`]; conversation and memory tools.
-//! - [`openai_sse`]: OpenAI-compatible SSE adapter ([`StreamToSse`], [`ChatCompletionChunk`], [`parse_chat_request`]).
-//!
-//! Key types are re-exported at crate root so you can `use langgraph::{Agent, StateGraph, Message, ReActState};`.
+//! - **One step per run**: Each agent implements a single step—receive state, return updated state.
+//! - **State graphs**: Compose agents into [`StateGraph`] with conditional edges for complex workflows.
+//! - **Minimal core API with optional streaming**: [`CompiledStateGraph::invoke`] stays state-in/state-out;
+//!   use [`CompiledStateGraph::stream`] for incremental output when you need it.
 //!
 //! ## Features
 //!
-//! - `lance`: LanceDB vector store for long-term memory (optional; heavy dependency).
+//! - **State Graphs**: Build and run stateful agent graphs with conditional routing.
+//! - **ReAct Pattern**: Built-in reasoning + acting loops (Think → Act → Observe); [`ReactRunner`]
+//!   and [`build_react_runner`] for config-driven ReAct (optional persistence, MCP, memory tools).
+//! - **LLM Integration**: Flexible [`LlmClient`] trait with [`MockLlm`] and OpenAI-compatible [`ChatOpenAI`].
+//! - **Memory & Checkpointing**: In-memory and persistent storage for agent state ([`Checkpointer`], [`Store`]).
+//! - **Tool Integration**: Extensible tool system with MCP support ([`ToolSource`], [`McpToolSource`]).
+//! - **Persistence**: Optional SQLite and LanceDB backends for long-term memory.
+//! - **Middleware**: Wrap node execution with custom async logic ([`NodeMiddleware`]).
+//! - **Streaming**: Stream per-step states or node updates via [`CompiledStateGraph::stream`] with [`StreamMode`].
+//! - **Channels**: State update strategies ([`LastValue`], [`EphemeralValue`], [`Topic`], [`BinaryOperatorAggregate`],
+//!   [`NamedBarrierValue`]); custom merge via [`StateUpdater`] and [`FieldBasedUpdater`].
+//! - **Runtime Context**: Custom runtime context, store access, and managed values ([`RunContext`], [`ManagedValue`]).
+//! - **Cache, Retry, Interrupts**: In-memory caching ([`InMemoryCache`]), retry policies ([`RetryPolicy`]),
+//!   human-in-the-loop ([`InterruptHandler`]).
+//! - **Graph Visualization**: [`generate_dot`], [`generate_text`].
+//!
+//! Feature flag: `lance` — LanceDB vector store for long-term memory (optional; heavy dependency).
+//!
+//! ## Main modules
+//!
+//! - [`graph`]: [`StateGraph`], [`CompiledStateGraph`], [`Node`], [`Next`], [`RunContext`] — build and run state graphs.
+//! - [`react`]: ReAct nodes ([`ThinkNode`], [`ActNode`], [`ObserveNode`]), [`run_react_graph`], [`tools_condition`], [`ReactRunner`].
+//! - [`react_builder`]: [`ReactBuildConfig`], [`build_react_runner`] (recommended), [`build_react_run_context`].
+//! - [`state`]: [`ReActState`], [`ToolCall`], [`ToolResult`] — state and tool types for ReAct.
+//! - [`llm`]: [`LlmClient`] trait, [`MockLlm`], [`ChatOpenAI`].
+//! - [`memory`]: Checkpointing ([`Checkpointer`], [`MemorySaver`], [`SqliteSaver`]), [`Store`]; optional LanceDB.
+//! - [`tool_source`]: [`ToolSource`], [`ToolSpec`]; MCP ([`McpToolSource`]); [`WebToolsSource`], [`BashToolsSource`].
+//! - [`traits`]: Core [`Agent`] trait — implement for custom agents.
+//! - [`message`]: [`Message`] (System / User / Assistant).
+//! - [`stream`]: [`StreamWriter`], [`StreamEvent`], [`StreamMode`] for graph runs.
+//! - [`config`]: Config summaries ([`RunConfigSummary`], [`build_config_summary`]).
+//! - [`cache`]: [`Cache`], [`InMemoryCache`].
+//! - [`channels`]: [`Channel`], [`LastValue`], [`Topic`], etc.; [`StateUpdater`], [`FieldBasedUpdater`].
+//! - [`managed`]: [`ManagedValue`], [`IsLastStep`].
+//! - [`tools`]: [`register_mcp_tools`], [`McpToolAdapter`].
+//! - [`openai_sse`]: OpenAI-compatible SSE ([`StreamToSse`], [`ChatCompletionChunk`], [`parse_chat_request`]).
+//!
+//! Key types are re-exported at crate root: `use langgraph::{Agent, StateGraph, Message, ReActState};`.
 //!
 //! ## Quick start
 //!
@@ -45,37 +61,52 @@
 //! use langgraph::{Agent, AgentError, Message};
 //!
 //! #[derive(Clone, Debug, Default)]
-//! struct MyState { messages: Vec<Message> }
+//! struct MyState {
+//!     messages: Vec<Message>,
+//! }
 //!
 //! struct EchoAgent;
 //!
 //! #[async_trait]
 //! impl Agent for EchoAgent {
-//!     fn name(&self) -> &str { "echo" }
+//!     fn name(&self) -> &str {
+//!         "echo"
+//!     }
+//!
 //!     type State = MyState;
+//!
 //!     async fn run(&self, state: Self::State) -> Result<Self::State, AgentError> {
-//!         let mut m = state.messages;
-//!         if let Some(Message::User(s)) = m.last() {
-//!             m.push(Message::Assistant(s.clone()));
+//!         let mut messages = state.messages;
+//!         if let Some(Message::User(s)) = messages.last() {
+//!             messages.push(Message::Assistant(s.clone()));
 //!         }
-//!         Ok(MyState { messages: m })
+//!         Ok(MyState { messages })
 //!     }
 //! }
 //!
 //! # #[tokio::main]
 //! # async fn main() {
 //! let mut state = MyState::default();
-//! state.messages.push(Message::User("hello".into()));
-//! let out = EchoAgent.run(state).await.unwrap();
+//! state.messages.push(Message::User("hello, world!".to_string()));
+//!
+//! let agent = EchoAgent;
+//! match agent.run(state).await {
+//!     Ok(s) => {
+//!         if let Some(Message::Assistant(content)) = s.messages.last() {
+//!             println!("{}", content);
+//!         }
+//!     }
+//!     Err(e) => eprintln!("error: {}", e),
+//! }
 //! # }
 //! ```
 //!
-//! Run the full echo example: `cargo run -p langgraph-examples --example echo -- "hello"`
+//! Run the echo example: `cargo run -p langgraph-examples --example echo -- "hello, world!"`
 //!
 //! ## Examples
 //!
-//! Concrete agents and state types (e.g. `EchoAgent`, `AgentState`) live in the `langgraph-examples`
-//! crate, not in this framework. Entrypoints: `echo`, `react_linear`, `react_memory`, `react_mcp`.
+//! See the `langgraph-examples` crate: `echo`, `react_linear`, `react_mcp`, `react_exa`, `react_memory`,
+//! `memory_checkpoint`, `memory_persistence`, `openai_embedding`, `state_graph_echo`.
 
 pub mod cache;
 pub mod channels;
@@ -101,8 +132,8 @@ pub use config::{
     MemoryConfigSummary, RunConfigSummary, RunConfigSummarySource, ToolConfigSummary,
 };
 pub use channels::{
-    BinaryOperatorAggregate, Channel, ChannelError, EphemeralValue, LastValue, NamedBarrierValue,
-    Topic,
+    BinaryOperatorAggregate, Channel, ChannelError, EphemeralValue, FieldBasedUpdater, LastValue,
+    NamedBarrierValue, StateUpdater, Topic,
 };
 pub use error::AgentError;
 pub use graph::{
