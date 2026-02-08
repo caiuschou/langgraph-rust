@@ -57,9 +57,10 @@ pub struct ReactRunContext {
     /// is set in config; `None` otherwise. Passed to [`run_react_graph`](crate::run_react_graph) for
     /// checkpoint resume and store namespace.
     pub runnable_config: Option<RunnableConfig>,
-    /// Tool source providing tools to the agent. Either [`MockToolSource`](crate::tool_source::MockToolSource)
-    /// (when no memory and no Exa) or [`AggregateToolSource`](crate::tools::AggregateToolSource) with
-    /// optional [`MemoryToolsSource`](crate::tool_source::MemoryToolsSource) and MCP Exa.
+    /// Tool source providing tools to the agent. Always includes [`web_fetcher`](crate::tool_source::TOOL_WEB_FETCHER)
+    /// (WebToolsSource). When no memory and no Exa, only web_fetcher; otherwise
+    /// [`AggregateToolSource`](crate::tools::AggregateToolSource) with optional [`MemoryToolsSource`](crate::tool_source::MemoryToolsSource),
+    /// MCP Exa, and web_fetcher.
     /// Callers (langgraph-cli, langgraph-server) may use `.as_ref()` when building the LLM to pass
     /// tool specs; then moved into [`ReactRunner::new`](crate::react::ReactRunner::new).
     pub tool_source: Box<dyn ToolSource>,

@@ -1,13 +1,14 @@
 //! Builds tool source from [`ReactBuildConfig`](super::super::config::ReactBuildConfig).
 //!
-//! Produces `MockToolSource` when no memory and no Exa; otherwise `AggregateToolSource`
-//! with optional `MemoryToolsSource` and optional MCP Exa.
+//! Always includes web_fetcher (WebToolsSource). When no memory and no Exa, returns
+//! an `AggregateToolSource` with only web_fetcher; otherwise `AggregateToolSource`
+//! with optional `MemoryToolsSource`, optional MCP Exa, and web_fetcher.
 
 use std::sync::Arc;
 
 use crate::error::AgentError;
-use crate::tool_source::{MemoryToolsSource, MockToolSource, ToolSource};
-use crate::tools::{register_mcp_tools, AggregateToolSource};
+use crate::tool_source::{MemoryToolsSource, ToolSource, WebToolsSource};
+use crate::tools::{register_mcp_tools, AggregateToolSource, WebFetcherTool};
 
 use crate::tool_source::McpToolSource;
 
@@ -80,7 +81,7 @@ pub(crate) async fn build_tool_source(
     let has_exa = config.exa_api_key.is_some();
 
     if !has_memory && !has_exa {
-        return Ok(Box::new(MockToolSource::get_time_example()));
+        return Ok(Box::new(WebToolsSource::new().await));
     }
 
     let aggregate = if has_memory {
@@ -95,6 +96,7 @@ pub(crate) async fn build_tool_source(
         AggregateToolSource::new()
     };
 
+    aggregate.register_sync(Box::new(WebFetcherTool::new()));
     register_exa_mcp(config, &aggregate).await?;
 
     Ok(Box::new(aggregate))
