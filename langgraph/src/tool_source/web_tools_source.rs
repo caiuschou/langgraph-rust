@@ -38,7 +38,7 @@ impl WebToolsSource {
     #[allow(clippy::new_ret_no_self)]
     pub async fn new() -> AggregateToolSource {
         let source = AggregateToolSource::new();
-        source.register_sync(Box::new(WebFetcherTool::new()));
+        source.register_async(Box::new(WebFetcherTool::new())).await;
         source
     }
 
@@ -65,7 +65,9 @@ impl WebToolsSource {
     #[allow(clippy::new_ret_no_self)]
     pub async fn with_client(client: reqwest::Client) -> AggregateToolSource {
         let source = AggregateToolSource::new();
-        source.register_sync(Box::new(WebFetcherTool::with_client(client)));
+        source
+            .register_async(Box::new(WebFetcherTool::with_client(client)))
+            .await;
         source
     }
 }

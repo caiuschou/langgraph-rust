@@ -61,11 +61,11 @@ impl MemoryToolsSource {
         let list = ListMemoriesTool::new(store, namespace);
         let get_recent = GetRecentMessagesTool::new();
 
-        source.register_sync(Box::new(remember));
-        source.register_sync(Box::new(recall));
-        source.register_sync(Box::new(search));
-        source.register_sync(Box::new(list));
-        source.register_sync(Box::new(get_recent));
+        source.register_async(Box::new(remember)).await;
+        source.register_async(Box::new(recall)).await;
+        source.register_async(Box::new(search)).await;
+        source.register_async(Box::new(list)).await;
+        source.register_async(Box::new(get_recent)).await;
 
         source
     }

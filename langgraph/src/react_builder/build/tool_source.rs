@@ -96,7 +96,7 @@ pub(crate) async fn build_tool_source(
         AggregateToolSource::new()
     };
 
-    aggregate.register_sync(Box::new(WebFetcherTool::new()));
+    aggregate.register_async(Box::new(WebFetcherTool::new())).await;
     register_exa_mcp(config, &aggregate).await?;
 
     Ok(Box::new(aggregate))

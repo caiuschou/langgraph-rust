@@ -36,7 +36,7 @@ impl BashToolsSource {
     #[allow(clippy::new_ret_no_self)]
     pub async fn new() -> AggregateToolSource {
         let source = AggregateToolSource::new();
-        source.register_sync(Box::new(BashTool::new()));
+        source.register_async(Box::new(BashTool::new())).await;
         source
     }
 }

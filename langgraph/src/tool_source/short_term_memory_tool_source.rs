@@ -42,7 +42,9 @@ impl ShortTermMemoryToolSource {
     #[allow(clippy::new_ret_no_self)]
     pub async fn new() -> AggregateToolSource {
         let source = AggregateToolSource::new();
-        source.register_sync(Box::new(GetRecentMessagesTool::new()));
+        source
+            .register_async(Box::new(GetRecentMessagesTool::new()))
+            .await;
         source
     }
 }

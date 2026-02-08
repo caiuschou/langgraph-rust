@@ -233,11 +233,25 @@ impl ToolRegistryLocked {
         }
     }
 
+    /// Registers a tool in the registry asynchronously.
+    ///
+    /// Prefer this when calling from async context (e.g. during initialization) to avoid
+    /// blocking the tokio worker. Does not spawn threads or block.
+    ///
+    /// # Parameters
+    ///
+    /// - `tool`: Box<dyn Tool> to register
+    pub async fn register_async(&self, tool: Box<dyn Tool>) {
+        let mut inner = self.inner.write().await;
+        inner.register(tool);
+    }
+
     /// Registers a tool in the registry synchronously.
     ///
     /// This method spawns a new thread with its own tokio runtime to avoid conflicts.
     /// This is useful for constructors where you don't have an async context.
-    /// Note: This blocks until registration is complete.
+    /// Note: This blocks until registration is complete. Prefer [`register_async`](Self::register_async)
+    /// when in async context.
     ///
     /// # Parameters
     ///

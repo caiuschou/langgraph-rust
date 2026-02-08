@@ -73,7 +73,7 @@ pub async fn register_mcp_tools(
     for spec in specs {
         let name = spec.name.clone();
         let adapter = McpToolAdapter::new(name, spec, Arc::clone(&mcp));
-        aggregate.register_sync(Box::new(adapter));
+        aggregate.register_async(Box::new(adapter)).await;
     }
     Ok(())
 }

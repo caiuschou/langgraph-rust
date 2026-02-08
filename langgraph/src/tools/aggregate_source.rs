@@ -69,10 +69,23 @@ impl AggregateToolSource {
         }
     }
 
+    /// Registers a tool with this source asynchronously.
+    ///
+    /// Prefer this when calling from async context (e.g. WebToolsSource::new) to avoid
+    /// blocking the tokio worker.
+    ///
+    /// # Parameters
+    ///
+    /// - `tool`: Box<dyn Tool> to register
+    pub async fn register_async(&self, tool: Box<dyn Tool>) {
+        self.registry.register_async(tool).await;
+    }
+
     /// Registers a tool with this source synchronously.
     ///
     /// Tools are stored in the internal ToolRegistryLocked and can be
-    /// listed and called via ToolSource trait methods.
+    /// listed and called via ToolSource trait methods. Prefer [`register_async`](Self::register_async)
+    /// when in async context.
     ///
     /// # Parameters
     ///
