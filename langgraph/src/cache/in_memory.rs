@@ -1,8 +1,10 @@
 //! In-memory cache implementation.
 
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
+
+use tokio::sync::RwLock;
 
 use super::{Cache, CacheError};
 
@@ -77,7 +79,7 @@ where
     V: Clone + Send + Sync + 'static,
 {
     async fn get(&self, key: &K) -> Option<V> {
-        let data = self.data.read().unwrap();
+        let data = self.data.read().await;
         if let Some(entry) = data.get(key) {
             if entry.is_expired() {
                 return None;
@@ -90,19 +92,19 @@ where
     async fn set(&self, key: K, value: V, ttl: Option<Duration>) -> Result<(), CacheError> {
         let expires_at = ttl.map(|d| Instant::now() + d);
         let entry = CacheEntry { value, expires_at };
-        let mut data = self.data.write().unwrap();
+        let mut data = self.data.write().await;
         data.insert(key, entry);
         Ok(())
     }
 
     async fn delete(&self, key: &K) -> Result<(), CacheError> {
-        let mut data = self.data.write().unwrap();
+        let mut data = self.data.write().await;
         data.remove(key);
         Ok(())
     }
 
     async fn clear(&self) -> Result<(), CacheError> {
-        let mut data = self.data.write().unwrap();
+        let mut data = self.data.write().await;
         data.clear();
         Ok(())
     }
