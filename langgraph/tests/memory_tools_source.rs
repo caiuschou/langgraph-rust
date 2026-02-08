@@ -5,14 +5,42 @@
 
 mod init_logging;
 
-use langgraph::memory::{InMemoryStore, Store};
+use async_trait::async_trait;
+use langgraph::memory::{
+    Embedder, InMemoryStore, InMemoryVectorStore, Store, StoreError,
+};
 use langgraph::message::Message;
 use langgraph::tool_source::{
     MemoryToolsSource, ToolCallContext, ToolSource, TOOL_GET_RECENT_MESSAGES, TOOL_LIST_MEMORIES,
-    TOOL_RECALL, TOOL_REMEMBER,
+    TOOL_RECALL, TOOL_REMEMBER, TOOL_SEARCH_MEMORIES,
 };
 use serde_json::json;
 use std::sync::Arc;
+
+/// Mock embedder for vector store tests.
+struct MockEmbedder {
+    dimension: usize,
+}
+
+#[async_trait]
+impl Embedder for MockEmbedder {
+    async fn embed(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, StoreError> {
+        Ok(texts
+            .iter()
+            .map(|t| {
+                let mut v = vec![0f32; self.dimension];
+                for (i, b) in t.bytes().enumerate() {
+                    v[i % self.dimension] += b as f32 / 256.0;
+                }
+                v
+            })
+            .collect())
+    }
+
+    fn dimension(&self) -> usize {
+        self.dimension
+    }
+}
 
 #[tokio::test]
 async fn memory_tools_source_list_tools_returns_five_tools() {
@@ -69,4 +97,31 @@ async fn memory_tools_source_set_call_context_forwarded_get_recent_messages() {
         arr[1].get("content").and_then(|v| v.as_str()),
         Some("hello")
     );
+}
+
+/// **Scenario**: MemoryToolsSource with InMemoryVectorStore + MockEmbedder.
+/// Covers remember + search_memories with semantic search (embed call path).
+#[tokio::test]
+async fn memory_tools_source_with_vector_store() {
+    let embedder = Arc::new(MockEmbedder { dimension: 8 });
+    let store: Arc<dyn Store> = Arc::new(InMemoryVectorStore::new(embedder));
+    let ns = vec!["memories".to_string()];
+    let source = MemoryToolsSource::new(store, ns).await;
+
+    source
+        .call_tool(TOOL_REMEMBER, json!({ "key": "lang", "value": "rust programming" }))
+        .await
+        .unwrap();
+    source
+        .call_tool(TOOL_REMEMBER, json!({ "key": "food", "value": "pizza" }))
+        .await
+        .unwrap();
+
+    let r = source
+        .call_tool(TOOL_SEARCH_MEMORIES, json!({ "query": "programming", "limit": 5 }))
+        .await
+        .unwrap();
+    let hits: Vec<serde_json::Value> = serde_json::from_str(&r.text).unwrap();
+    assert!(!hits.is_empty());
+    assert!(hits.iter().any(|h| h.get("key").and_then(|v| v.as_str()) == Some("lang")));
 }
