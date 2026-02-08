@@ -1,3 +1,5 @@
+//! Integration tests for WebFetcherTool: name, spec, GET/POST call behavior.
+
 use langgraph::tools::{Tool, WebFetcherTool, TOOL_WEB_FETCHER};
 use serde_json::json;
 
@@ -25,7 +27,6 @@ async fn web_fetcher_tool_call_fetches_valid_url() {
     let tool = WebFetcherTool::new();
     let args = json!({"url": "https://httpbin.org/json"});
     let result = tool.call(args, None).await.unwrap();
-    assert!(result.text.contains("slideshow"));
     assert!(result.text.contains("slideshow"));
 }
 

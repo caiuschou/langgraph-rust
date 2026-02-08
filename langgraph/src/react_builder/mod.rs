@@ -87,7 +87,7 @@
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! let config = ReactBuildConfig::from_env();
 //! let runner = build_react_runner(&config, None, false).await?;
-//! let state = run_react_graph(&runner, "Hello", None).await?;
+//! let state = runner.invoke("Hello").await?;
 //! # Ok(())
 //! # }
 //! ```
@@ -102,7 +102,7 @@
 //! let config = ReactBuildConfig::from_env();
 //! let openai_config = OpenAIConfig::new().with_api_key(std::env::var("OPENAI_API_KEY").unwrap());
 //! let runner = build_react_runner_with_openai(&config, openai_config, "gpt-4o-mini", false).await?;
-//! let state = run_react_graph(&runner, "Hello", None).await?;
+//! let state = runner.invoke("Hello").await?;
 //! # Ok(())
 //! # }
 //! ```

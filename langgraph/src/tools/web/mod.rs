@@ -8,33 +8,39 @@ use crate::tools::Tool;
 /// Tool name for the web fetcher operation.
 pub const TOOL_WEB_FETCHER: &str = "web_fetcher";
 
-/// Tool for fetching content from URLs via HTTP GET requests.
+/// Tool for HTTP requests to URLs (GET or POST).
 ///
 /// Wraps reqwest::Client and exposes it as a tool for the LLM.
-/// Interacts with HTTP servers to retrieve web pages, API responses,
-/// or other HTTP-accessible content.
+/// Supports GET (default) and POST with optional body and headers.
 ///
 /// # Examples
 ///
 /// ```no_run
-/// use langgraph::tools::WebFetcherTool;
+/// use langgraph::tools::{Tool, WebFetcherTool};
 /// use serde_json::json;
 ///
 /// # #[tokio::main]
 /// # async fn main() {
 /// let tool = WebFetcherTool::new();
 ///
-/// let args = json!({
-///     "url": "https://example.com/api/data"
-/// });
+/// // GET (default)
+/// let args = json!({ "url": "https://example.com/api/data" });
 /// let result = tool.call(args, None).await.unwrap();
 /// assert!(!result.text.is_empty());
+///
+/// // POST with JSON body
+/// let args = json!({
+///     "url": "https://example.com/api",
+///     "method": "POST",
+///     "body": { "key": "value" }
+/// });
+/// let result = tool.call(args, None).await.unwrap();
 /// # }
 /// ```
 ///
 /// # Interaction
 ///
-/// - **reqwest::Client**: Performs HTTP GET requests
+/// - **reqwest::Client**: Performs HTTP GET or POST
 /// - **ToolRegistry**: Registers this tool by name "web_fetcher"
 /// - **AggregateToolSource**: Uses this tool via ToolRegistry
 /// - **ToolSourceError**: Maps HTTP errors to tool error types
@@ -111,16 +117,29 @@ impl Tool for WebFetcherTool {
         crate::tool_source::ToolSpec {
             name: TOOL_WEB_FETCHER.to_string(),
             description: Some(
-                "Fetch content from a URL. Use this tool to retrieve web pages, API responses, \
-                 or other HTTP-accessible content. Supports GET requests and returns the response \
-                 body as text.".to_string(),
+                "Fetch or send content to a URL. Use this tool to retrieve web pages (GET), call \
+                 APIs with a body (POST), or other HTTP-accessible content. Optional: method (default \
+                 GET), body (string or JSON object), headers (object). Returns the response body as text.".to_string(),
             ),
             input_schema: json!({
                 "type": "object",
                 "properties": {
                     "url": {
                         "type": "string",
-                        "description": "The URL to fetch content from. Must be a valid HTTP/HTTPS URL."
+                        "description": "The URL to request. Must be a valid HTTP/HTTPS URL."
+                    },
+                    "method": {
+                        "type": "string",
+                        "description": "HTTP method. One of: GET, POST. Default is GET.",
+                        "enum": ["GET", "POST"]
+                    },
+                    "body": {
+                        "description": "Request body for POST. May be a string (sent as-is with Content-Type: text/plain) or a JSON object (sent as application/json)."
+                    },
+                    "headers": {
+                        "type": "object",
+                        "description": "Optional HTTP headers as key-value pairs (string keys and values).",
+                        "additionalProperties": { "type": "string" }
                     }
                 },
                 "required": ["url"]
@@ -128,11 +147,11 @@ impl Tool for WebFetcherTool {
         }
     }
 
-    /// Executes the tool by fetching content from the specified URL.
+    /// Executes the tool by performing an HTTP request to the specified URL.
     ///
     /// # Parameters
     ///
-    /// - `args`: JSON value containing the "url" parameter
+    /// - `args`: JSON with required "url"; optional "method" (GET|POST), "body", "headers"
     /// - `_ctx`: Optional per-call context (not used by this tool)
     ///
     /// # Returns
@@ -142,15 +161,15 @@ impl Tool for WebFetcherTool {
     /// # Errors
     ///
     /// Returns ToolSourceError for:
-    /// - Missing or invalid "url" parameter (InvalidInput)
+    /// - Missing or invalid "url" (InvalidInput)
+    /// - Unsupported "method" (InvalidInput)
     /// - HTTP request failures (Transport)
     /// - Non-success HTTP status codes (Transport)
     /// - Response read failures (Transport)
     ///
     /// # Interaction
     ///
-    /// - Called by ToolRegistry::call() which validates tool name exists
-    /// - Uses reqwest::Client for HTTP GET requests
+    /// - Called by ToolRegistry::call(); uses reqwest::Client for GET or POST
     async fn call(
         &self,
         args: serde_json::Value,
@@ -161,9 +180,46 @@ impl Tool for WebFetcherTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| ToolSourceError::InvalidInput("missing url".to_string()))?;
 
-        let response = self
-            .client
-            .get(url)
+        let method = args
+            .get("method")
+            .and_then(|v| v.as_str())
+            .unwrap_or("GET")
+            .to_uppercase();
+        if method != "GET" && method != "POST" {
+            return Err(ToolSourceError::InvalidInput(format!(
+                "unsupported method: {} (use GET or POST)",
+                method
+            )));
+        }
+
+        let mut request = match method.as_str() {
+            "GET" => self.client.get(url),
+            _ => self.client.post(url),
+        };
+
+        if let Some(h) = args.get("headers").and_then(|v| v.as_object()) {
+            for (k, v) in h {
+                if let Some(v_str) = v.as_str() {
+                    request = request.header(k.as_str(), v_str);
+                }
+            }
+        }
+
+        if method == "POST" {
+            if let Some(body) = args.get("body") {
+                if body.is_object() {
+                    request = request.json(body);
+                } else if let Some(s) = body.as_str() {
+                    request = request
+                        .body(s.to_string())
+                        .header("Content-Type", "text/plain; charset=utf-8");
+                } else if !body.is_null() {
+                    request = request.json(body);
+                }
+            }
+        }
+
+        let response = request
             .send()
             .await
             .map_err(|e| ToolSourceError::Transport(format!("request failed: {}", e)))?;

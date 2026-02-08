@@ -22,7 +22,7 @@
 //!
 //! let mut state = ReActState::default();
 //! state.messages.push(Message::system("You are a helpful assistant."));
-//! state.messages.push(Message::user("What is 2+2?".into()));
+//! state.messages.push(Message::user("What is 2+2?"));
 //! // ... pass state to run_react_graph or StateGraph::invoke
 //! ```
 

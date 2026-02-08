@@ -1,4 +1,4 @@
-//! Web tools source: web_fetcher for HTTP GET requests.
+//! Web tools source: web_fetcher for HTTP GET/POST requests.
 //!
 //! Uses `AggregateToolSource` internally to register WebFetcherTool.
 //! See `docs/rust-langgraph/tools-refactor/overview.md` §3.4.
@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use crate::tool_source::{ToolSource, ToolSourceError};
 use crate::tools::{AggregateToolSource, WebFetcherTool};
 
-/// Tool name: fetch content from URL via HTTP GET.
+/// Tool name: fetch or send content via HTTP GET/POST.
 pub const TOOL_WEB_FETCHER: &str = "web_fetcher";
 
 /// Tool source that exposes web fetcher as one tool: web_fetcher.

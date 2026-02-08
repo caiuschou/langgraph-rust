@@ -16,7 +16,7 @@
 //! ## Web tools
 //!
 //! - **WebToolsSource**: web fetching as tool (`web_fetcher`).
-//!   Use `WebToolsSource::new()` to enable HTTP GET capabilities; pass to `ActNode::new(Box::new(web_tools))`.
+//!   Use `WebToolsSource::new()` to enable HTTP GET/POST capabilities; pass to `ActNode::new(Box::new(web_tools))`.
 //! - **BashToolsSource**: shell command execution as tool (`bash`).
 //!   Use `BashToolsSource::new()` to enable running shell commands; pass to `ActNode::new(Box::new(bash_tools))`.
 
